@@ -3,11 +3,25 @@ import { OfficialCard } from "@/components/OfficialCard";
 import { Button } from "@/components/ui/button";
 import { useComplaint } from "@/hooks/use-complaints";
 import { useRoute, useLocation } from "wouter";
-import { Loader2, CheckCircle2, DollarSign, AlertCircle, CreditCard, Info } from "lucide-react";
+import { Loader2, CheckCircle2, DollarSign, AlertCircle, Info } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+
+// Lazy-load Stripe with publishable key from server
+let stripePromise: Promise<Stripe | null> | null = null;
+
+function getStripePromise(): Promise<Stripe | null> {
+  if (!stripePromise) {
+    stripePromise = fetch('/api/stripe/config')
+      .then(res => res.json())
+      .then(({ publishableKey }) => loadStripe(publishableKey));
+  }
+  return stripePromise;
+}
 
 export default function Payment() {
   const [, params] = useRoute("/payment/:id");
@@ -16,13 +30,12 @@ export default function Payment() {
   const { toast } = useToast();
   
   const { data: complaint, isLoading: isLoadingComplaint, error: complaintError } = useComplaint(id);
-  const [isRedirecting, setIsRedirecting] = useState(false);
-  const [paymentCancelled, setPaymentCancelled] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [stripeLoaded, setStripeLoaded] = useState(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('payment') === 'cancelled') {
-      setPaymentCancelled(true);
       toast({
         title: "Payment Cancelled",
         description: "You can try again when you're ready.",
@@ -32,35 +45,29 @@ export default function Payment() {
     }
   }, [id, toast]);
 
-  const handleStripeCheckout = async () => {
-    setIsRedirecting(true);
-    try {
-      const response = await fetch('/api/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ complaintId: id }),
-      });
+  useEffect(() => {
+    // Pre-load Stripe
+    getStripePromise().then(() => setStripeLoaded(true));
+  }, []);
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create checkout session');
-      }
+  const fetchClientSecret = useCallback(async () => {
+    const response = await fetch('/api/stripe/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ complaintId: id }),
+    });
 
-      const { url } = await response.json();
-      
-      if (url) {
-        window.location.href = url;
-      } else {
-        throw new Error('No checkout URL received');
-      }
-    } catch (error: any) {
-      setIsRedirecting(false);
-      toast({
-        title: "Payment Error",
-        description: error.message || "Failed to initiate payment. Please try again.",
-        variant: "destructive",
-      });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create checkout session');
     }
+
+    const { clientSecret } = await response.json();
+    return clientSecret;
+  }, [id]);
+
+  const handleStartCheckout = () => {
+    setShowCheckout(true);
   };
 
   if (isLoadingComplaint) {
@@ -125,30 +132,44 @@ export default function Payment() {
                 </div>
               </div>
 
-              <Button 
-                data-testid="button-pay-stripe"
-                className="w-full h-12 text-lg shadow-lg" 
-                size="lg"
-                onClick={handleStripeCheckout}
-                disabled={isRedirecting}
-              >
-                {isRedirecting ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Redirecting to Stripe...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-2 h-5 w-5" />
-                    Pay ${(complaint.filingFee / 100).toFixed(2)} with Stripe
-                  </>
-                )}
-              </Button>
+              {!showCheckout ? (
+                <Button 
+                  data-testid="button-pay-stripe"
+                  className="w-full h-12 text-lg shadow-lg" 
+                  size="lg"
+                  onClick={handleStartCheckout}
+                  disabled={!stripeLoaded}
+                >
+                  {!stripeLoaded ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      Pay ${(complaint.filingFee / 100).toFixed(2)} - Enter Card Details
+                    </>
+                  )}
+                </Button>
+              ) : stripeLoaded ? (
+                <div className="mt-4" data-testid="stripe-embedded-checkout">
+                  <EmbeddedCheckoutProvider
+                    stripe={getStripePromise()}
+                    options={{ fetchClientSecret }}
+                  >
+                    <EmbeddedCheckout />
+                  </EmbeddedCheckoutProvider>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              )}
             </div>
           </OfficialCard>
           
           <p className="text-center text-xs text-muted-foreground mt-6 max-w-sm mx-auto">
-            By clicking "Pay", you agree to the non-refundable filing fee for the administrative processing of your complaint. Secure payment powered by Stripe.
+            By proceeding with payment, you agree to the non-refundable filing fee for the administrative processing of your complaint. Secure payment powered by Stripe.
           </p>
         </motion.div>
       </main>

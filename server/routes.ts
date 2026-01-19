@@ -62,6 +62,7 @@ export async function registerRoutes(
     }
   });
 
+  // Create embedded checkout session - form displays on the same page
   app.post('/api/stripe/create-checkout-session', async (req, res) => {
     try {
       const { complaintId } = req.body;
@@ -82,6 +83,7 @@ export async function registerRoutes(
       const stripe = await getUncachableStripeClient();
       const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
 
+      // Use embedded UI mode so checkout appears on-page
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
@@ -98,8 +100,8 @@ export async function registerRoutes(
           },
         ],
         mode: 'payment',
-        success_url: `${baseUrl}/status/${complaint.id}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/payment/${complaint.id}?payment=cancelled`,
+        ui_mode: 'embedded',
+        return_url: `${baseUrl}/status/${complaint.id}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
         metadata: {
           complaintId: String(complaint.id),
           customerEmail: complaint.customerEmail,
@@ -108,8 +110,7 @@ export async function registerRoutes(
       });
 
       res.json({ 
-        sessionId: session.id,
-        url: session.url,
+        clientSecret: session.client_secret,
       });
     } catch (err: any) {
       console.error('Error creating checkout session:', err);
