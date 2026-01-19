@@ -1,8 +1,20 @@
 import Stripe from 'stripe';
 
 let connectionSettings: any;
+let credentialsSource: 'secrets' | 'connector' | null = null;
 
 async function getCredentials() {
+  // First, check for environment variable secrets (user's own keys)
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
+  
+  if (secretKey && publishableKey) {
+    credentialsSource = 'secrets';
+    console.log('Using Stripe credentials from secrets (your own Stripe account)');
+    return { publishableKey, secretKey };
+  }
+
+  // Fall back to Replit connector API (shared sandbox)
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? 'repl ' + process.env.REPL_IDENTITY
@@ -35,13 +47,20 @@ async function getCredentials() {
   connectionSettings = data.items?.[0];
 
   if (!connectionSettings || (!connectionSettings.settings.publishable || !connectionSettings.settings.secret)) {
-    throw new Error(`Stripe ${targetEnvironment} connection not found`);
+    throw new Error(`Stripe ${targetEnvironment} connection not found. Add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY secrets to use your own Stripe account.`);
   }
 
+  credentialsSource = 'connector';
+  console.log('Using Stripe credentials from Replit connector (shared sandbox)');
+  
   return {
     publishableKey: connectionSettings.settings.publishable,
     secretKey: connectionSettings.settings.secret,
   };
+}
+
+export function getCredentialsSource() {
+  return credentialsSource;
 }
 
 export async function getUncachableStripeClient() {
