@@ -1,35 +1,66 @@
 import { OfficialHeader } from "@/components/OfficialHeader";
 import { OfficialCard } from "@/components/OfficialCard";
-import { CreditCardInput } from "@/components/CreditCardInput";
 import { Button } from "@/components/ui/button";
-import { useComplaint, useProcessPayment } from "@/hooks/use-complaints";
+import { useComplaint } from "@/hooks/use-complaints";
 import { useRoute, useLocation } from "wouter";
-import { Loader2, CheckCircle2, DollarSign } from "lucide-react";
+import { Loader2, CheckCircle2, DollarSign, AlertCircle, CreditCard, Info } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Payment() {
   const [, params] = useRoute("/payment/:id");
   const [, setLocation] = useLocation();
   const id = Number(params?.id);
+  const { toast } = useToast();
   
   const { data: complaint, isLoading: isLoadingComplaint, error: complaintError } = useComplaint(id);
-  const paymentMutation = useProcessPayment();
-  const [cardDetails, setCardDetails] = useState({ number: "", expiry: "", cvc: "" });
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [paymentCancelled, setPaymentCancelled] = useState(false);
 
-  const isCardValid = cardDetails.number.length >= 15 && cardDetails.expiry.length >= 4 && cardDetails.cvc.length >= 3;
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('payment') === 'cancelled') {
+      setPaymentCancelled(true);
+      toast({
+        title: "Payment Cancelled",
+        description: "You can try again when you're ready.",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, '', `/payment/${id}`);
+    }
+  }, [id, toast]);
 
-  const handlePayment = () => {
-    paymentMutation.mutate({
-      complaintId: id,
-      paymentMethodId: "pm_mock_success", // In a real app, this comes from Stripe.js
-      cardLast4: cardDetails.number.slice(-4) || "4242",
-    }, {
-      onSuccess: () => {
-        setLocation(`/status/${id}`);
+  const handleStripeCheckout = async () => {
+    setIsRedirecting(true);
+    try {
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ complaintId: id }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create checkout session');
       }
-    });
+
+      const { url } = await response.json();
+      
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+    } catch (error: any) {
+      setIsRedirecting(false);
+      toast({
+        title: "Payment Error",
+        description: error.message || "Failed to initiate payment. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoadingComplaint) {
@@ -38,6 +69,11 @@ export default function Payment() {
 
   if (complaintError || !complaint) {
     return <PaymentError />;
+  }
+
+  if (complaint.status !== 'pending_payment') {
+    setLocation(`/status/${id}`);
+    return null;
   }
 
   return (
@@ -50,7 +86,7 @@ export default function Payment() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
         >
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h1 className="text-2xl font-serif font-bold text-foreground">Remit Filing Fee</h1>
               <p className="text-sm text-muted-foreground font-mono mt-1">Case #{complaint.id}</p>
@@ -78,31 +114,41 @@ export default function Payment() {
 
               <div className="border-t border-border my-6" />
 
-              <CreditCardInput 
-                onChange={setCardDetails} 
-                disabled={paymentMutation.isPending}
-              />
+              <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-lg border border-amber-200 dark:border-amber-800 flex items-start gap-3">
+                <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-sm text-amber-800 dark:text-amber-300">Test Mode - Sandbox Payment</h4>
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                    This is a <strong>test payment</strong>. No real money will be charged. 
+                    Use Stripe's test card: <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded font-mono text-xs">4242 4242 4242 4242</code> with any future expiry date and any CVC.
+                  </p>
+                </div>
+              </div>
 
               <Button 
+                data-testid="button-pay-stripe"
                 className="w-full h-12 text-lg shadow-lg" 
                 size="lg"
-                onClick={handlePayment}
-                disabled={!isCardValid || paymentMutation.isPending}
+                onClick={handleStripeCheckout}
+                disabled={isRedirecting}
               >
-                {paymentMutation.isPending ? (
+                {isRedirecting ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Processing Transaction...
+                    Redirecting to Stripe...
                   </>
                 ) : (
-                  `Pay $${(complaint.filingFee / 100).toFixed(2)}`
+                  <>
+                    <CreditCard className="mr-2 h-5 w-5" />
+                    Pay ${(complaint.filingFee / 100).toFixed(2)} with Stripe
+                  </>
                 )}
               </Button>
             </div>
           </OfficialCard>
           
           <p className="text-center text-xs text-muted-foreground mt-6 max-w-sm mx-auto">
-            By clicking "Pay", you agree to the non-refundable filing fee for the administrative processing of your complaint.
+            By clicking "Pay", you agree to the non-refundable filing fee for the administrative processing of your complaint. Secure payment powered by Stripe.
           </p>
         </motion.div>
       </main>
@@ -115,7 +161,7 @@ function PaymentSkeleton() {
     <div className="min-h-screen bg-background">
       <OfficialHeader />
       <main className="max-w-xl mx-auto px-4 pt-12">
-        <div className="flex justify-between mb-8">
+        <div className="flex justify-between mb-8 gap-4 flex-wrap">
           <div className="space-y-2">
             <Skeleton className="h-8 w-48" />
             <Skeleton className="h-4 w-24" />

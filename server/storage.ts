@@ -11,6 +11,7 @@ export interface IStorage {
   // Payments
   createPayment(payment: InsertPayment): Promise<Payment>;
   getPaymentsByComplaintId(complaintId: number): Promise<Payment[]>;
+  updatePaymentByComplaintId(complaintId: number, updates: Partial<Payment>): Promise<Payment | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -39,6 +40,14 @@ export class DatabaseStorage implements IStorage {
 
   async getPaymentsByComplaintId(complaintId: number): Promise<Payment[]> {
     return await db.select().from(payments).where(eq(payments.complaintId, complaintId));
+  }
+
+  async updatePaymentByComplaintId(complaintId: number, updates: Partial<Payment>): Promise<Payment | undefined> {
+    const [updated] = await db.update(payments)
+      .set(updates)
+      .where(eq(payments.complaintId, complaintId))
+      .returning();
+    return updated;
   }
 }
 

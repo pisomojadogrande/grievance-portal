@@ -7,6 +7,7 @@ import OpenAI from "openai";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
 import { registerAudioRoutes } from "./replit_integrations/audio";
+import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 
 // Initialize OpenAI client using the integration environment variables
 const openai = new OpenAI({
@@ -49,7 +50,74 @@ export async function registerRoutes(
     res.json(complaint);
   });
 
-  // === Payment Routes ===
+  // === Stripe Routes ===
+
+  app.get('/api/stripe/config', async (req, res) => {
+    try {
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (err) {
+      console.error('Error getting Stripe config:', err);
+      res.status(500).json({ message: 'Failed to get Stripe configuration' });
+    }
+  });
+
+  app.post('/api/stripe/create-checkout-session', async (req, res) => {
+    try {
+      const { complaintId } = req.body;
+      
+      if (!complaintId) {
+        return res.status(400).json({ message: 'Complaint ID is required' });
+      }
+
+      const complaint = await storage.getComplaint(Number(complaintId));
+      if (!complaint) {
+        return res.status(404).json({ message: 'Complaint not found' });
+      }
+
+      if (complaint.status !== 'pending_payment') {
+        return res.status(400).json({ message: 'Payment already processed for this complaint' });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'Complaint Filing Fee',
+                description: `Administrative fee for processing complaint #${complaint.id}`,
+              },
+              unit_amount: complaint.filingFee, // 500 cents = $5.00
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${baseUrl}/status/${complaint.id}?payment=success`,
+        cancel_url: `${baseUrl}/payment/${complaint.id}?payment=cancelled`,
+        metadata: {
+          complaintId: String(complaint.id),
+          customerEmail: complaint.customerEmail,
+        },
+        customer_email: complaint.customerEmail,
+      });
+
+      res.json({ 
+        sessionId: session.id,
+        url: session.url,
+      });
+    } catch (err: any) {
+      console.error('Error creating checkout session:', err);
+      res.status(500).json({ message: err.message || 'Failed to create checkout session' });
+    }
+  });
+
+  // === Legacy Payment Route (kept for backwards compatibility but not used) ===
 
   app.post(api.payments.process.path, async (req, res) => {
     try {
@@ -60,8 +128,6 @@ export async function registerRoutes(
         return res.status(404).json({ message: 'Complaint not found' });
       }
 
-      // Simulate payment processing (always succeeds for this demo)
-      // In a real app, this would verify with Stripe
       const amount = 500; // $5.00
       
       const payment = await storage.createPayment({
@@ -69,11 +135,8 @@ export async function registerRoutes(
         amount,
       });
 
-      // Update complaint status
       await storage.updateComplaint(complaintId, { status: "received" });
 
-      // Trigger Bureaucratic AI Analysis (Async)
-      // We don't await this so the payment returns quickly
       generateBureaucraticResponse(complaintId, complaint.content).catch(console.error);
 
       res.json(payment);
@@ -92,8 +155,8 @@ export async function registerRoutes(
   return httpServer;
 }
 
-// Helper to generate AI response
-async function generateBureaucraticResponse(complaintId: number, content: string) {
+// Helper to generate AI response - exported for webhook handler
+export async function generateBureaucraticResponse(complaintId: number, content: string) {
   console.log(`[AI] Starting analysis for complaint #${complaintId}`);
   try {
     const response = await openai.chat.completions.create({
@@ -132,7 +195,6 @@ async function generateBureaucraticResponse(complaintId: number, content: string
 
   } catch (error) {
     console.error(`[AI] Error for #${complaintId}:`, error);
-    // Fallback if AI fails
     await storage.updateComplaint(complaintId, {
       status: "resolved",
       aiResponse: "We acknowledge receipt of your correspondence. It is currently being routed through standard processing protocols. Expect a follow-up within 6-8 months.",
