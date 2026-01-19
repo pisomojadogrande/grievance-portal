@@ -17,8 +17,17 @@ export default function Status() {
   if (isLoading) return <StatusSkeleton />;
   if (!complaint) return <StatusError />;
 
-  const isProcessing = complaint.status === "processing";
+  const isProcessing = complaint.status === "received" || complaint.status === "processing";
   const isResolved = complaint.status === "resolved";
+
+  // Use a query effect to poll if not resolved
+  const { data: pollingData } = useComplaint(id, {
+    enabled: !isResolved,
+    refetchInterval: isResolved ? false : 3000, // Poll every 3 seconds until resolved
+  });
+
+  // Update complaint with polling data if available
+  const displayComplaint = isResolved ? complaint : (pollingData || complaint);
 
   return (
     <div className="min-h-screen bg-background font-sans pb-20">
@@ -29,7 +38,7 @@ export default function Status() {
           <div>
             <h1 className="text-3xl font-serif font-bold text-foreground">Case Status</h1>
             <p className="text-sm text-muted-foreground font-mono mt-1">
-              Reference #{complaint.id} • Filed on {format(new Date(complaint.createdAt || new Date()), "MMM dd, yyyy")}
+              Reference #{displayComplaint.id} • Filed on {format(new Date(displayComplaint.createdAt || new Date()), "MMM dd, yyyy")}
             </p>
           </div>
           
@@ -71,7 +80,7 @@ export default function Status() {
                 ) : (
                   <div className="prose prose-sm md:prose-base max-w-none font-serif leading-relaxed text-foreground/90">
                     {/* Render newlines correctly */}
-                    {complaint.aiResponse?.split('\n').map((paragraph, i) => (
+                    {displayComplaint.aiResponse?.split('\n').map((paragraph, i) => (
                       <p key={i} className="mb-4">{paragraph}</p>
                     ))}
                     
@@ -115,7 +124,7 @@ export default function Status() {
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">Complexity Score</dt>
                       <dd className="font-mono font-bold">
-                        {complaint.complexityScore ?? "Calculating..."}
+                        {displayComplaint.complexityScore ?? "Calculating..."}
                       </dd>
                     </div>
                     <div className="flex justify-between">
@@ -124,8 +133,8 @@ export default function Status() {
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">Customer</dt>
-                      <dd className="truncate max-w-[120px]" title={complaint.customerEmail}>
-                        {complaint.customerEmail}
+                      <dd className="truncate max-w-[120px]" title={displayComplaint.customerEmail}>
+                        {displayComplaint.customerEmail}
                       </dd>
                     </div>
                   </dl>

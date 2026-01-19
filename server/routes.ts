@@ -94,6 +94,7 @@ export async function registerRoutes(
 
 // Helper to generate AI response
 async function generateBureaucraticResponse(complaintId: number, content: string) {
+  console.log(`[AI] Starting analysis for complaint #${complaintId}`);
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5.1",
@@ -118,16 +119,19 @@ async function generateBureaucraticResponse(complaintId: number, content: string
       response_format: { type: "json_object" }
     });
 
-    const aiResult = JSON.parse(response.choices[0].message.content || "{}");
+    const contentString = response.choices[0].message.content || "{}";
+    console.log(`[AI] Response for #${complaintId}:`, contentString);
+    const aiResult = JSON.parse(contentString);
     
     await storage.updateComplaint(complaintId, {
       status: "resolved",
       aiResponse: aiResult.responseText || "Your complaint has been received and filed in the circular bin.",
       complexityScore: aiResult.complexityScore || 5
     });
+    console.log(`[AI] Successfully resolved complaint #${complaintId}`);
 
   } catch (error) {
-    console.error("AI Generation Error:", error);
+    console.error(`[AI] Error for #${complaintId}:`, error);
     // Fallback if AI fails
     await storage.updateComplaint(complaintId, {
       status: "resolved",
