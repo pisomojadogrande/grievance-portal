@@ -20,9 +20,9 @@ export function useComplaint(id: number) {
     },
     enabled: !!id,
     refetchInterval: (query) => {
-      // Poll if status is processing (waiting for AI)
+      // Poll if status is processing or received (waiting for AI)
       const data = query.state.data;
-      if (data && data.status === "processing") return 2000;
+      if (data && (data.status === "processing" || data.status === "received")) return 2000;
       return false;
     },
   });
