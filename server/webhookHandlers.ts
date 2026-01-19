@@ -1,4 +1,4 @@
-import { getStripeSecretKey, getUncachableStripeClient } from './stripeClient';
+import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import Stripe from 'stripe';
 
@@ -33,6 +33,20 @@ export class WebhookHandlers {
         if (complaintId) {
           console.log(`[Stripe Webhook] Payment completed for complaint #${complaintId}`);
           
+          // IDEMPOTENCY CHECK: Get the complaint and check if already processed
+          const complaint = await storage.getComplaint(parseInt(complaintId));
+          if (!complaint) {
+            console.log(`[Stripe Webhook] Complaint #${complaintId} not found, skipping`);
+            break;
+          }
+          
+          // If already processed (by verify-session or previous webhook), skip
+          if (complaint.status !== 'pending_payment') {
+            console.log(`[Stripe Webhook] Complaint #${complaintId} already processed (status: ${complaint.status}), skipping`);
+            break;
+          }
+          
+          // Process the payment
           await storage.createPayment({
             complaintId: parseInt(complaintId),
             amount: session.amount_total || 500,
@@ -40,16 +54,16 @@ export class WebhookHandlers {
 
           await storage.updatePaymentByComplaintId(parseInt(complaintId), {
             status: 'succeeded',
-            transactionId: session.payment_intent as string || session.id,
+            transactionId: (session.payment_intent as string) || session.id,
           });
 
           await storage.updateComplaint(parseInt(complaintId), { status: 'received' });
           
+          // Trigger AI analysis
           const { generateBureaucraticResponse } = await import('./routes');
-          const complaint = await storage.getComplaint(parseInt(complaintId));
-          if (complaint) {
-            generateBureaucraticResponse(complaint.id, complaint.content).catch(console.error);
-          }
+          generateBureaucraticResponse(complaint.id, complaint.content).catch(console.error);
+          
+          console.log(`[Stripe Webhook] Successfully processed payment for complaint #${complaintId}`);
         }
         break;
       }

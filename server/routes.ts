@@ -98,7 +98,7 @@ export async function registerRoutes(
           },
         ],
         mode: 'payment',
-        success_url: `${baseUrl}/status/${complaint.id}?payment=success`,
+        success_url: `${baseUrl}/status/${complaint.id}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/payment/${complaint.id}?payment=cancelled`,
         metadata: {
           complaintId: String(complaint.id),
@@ -114,6 +114,72 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error('Error creating checkout session:', err);
       res.status(500).json({ message: err.message || 'Failed to create checkout session' });
+    }
+  });
+
+  // === Verify Checkout Session (called from success page) ===
+  // This is the primary source of truth for payment processing
+  // Uses idempotency check to prevent double-processing
+  
+  app.post('/api/stripe/verify-session', async (req, res) => {
+    try {
+      const { sessionId, complaintId } = req.body;
+      
+      if (!sessionId || !complaintId) {
+        return res.status(400).json({ message: 'Session ID and complaint ID are required' });
+      }
+
+      const complaint = await storage.getComplaint(Number(complaintId));
+      if (!complaint) {
+        return res.status(404).json({ message: 'Complaint not found' });
+      }
+
+      // IDEMPOTENCY CHECK: If already processed, just return success without any changes
+      if (complaint.status !== 'pending_payment') {
+        return res.json({ 
+          verified: true,
+          status: complaint.status,
+          message: 'Payment already processed'
+        });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      if (session.payment_status === 'paid' && session.metadata?.complaintId === String(complaintId)) {
+        // Process the successful payment with complete data
+        const payment = await storage.createPayment({
+          complaintId: Number(complaintId),
+          amount: session.amount_total || 500,
+        });
+
+        // Update payment with transaction details
+        await storage.updatePaymentByComplaintId(Number(complaintId), {
+          status: 'succeeded',
+          transactionId: (session.payment_intent as string) || session.id,
+        });
+
+        await storage.updateComplaint(Number(complaintId), { status: 'received' });
+        
+        // Trigger AI analysis
+        generateBureaucraticResponse(Number(complaintId), complaint.content).catch(console.error);
+
+        return res.json({ 
+          verified: true,
+          status: 'received',
+          message: 'Payment verified successfully'
+        });
+      }
+
+      return res.json({ 
+        verified: false,
+        status: session.payment_status,
+        message: 'Payment not yet completed'
+      });
+
+    } catch (err: any) {
+      console.error('Error verifying session:', err);
+      res.status(500).json({ message: err.message || 'Failed to verify session' });
     }
   });
 
