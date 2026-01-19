@@ -39,9 +39,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Payment Flow
 1. User submits complaint → stored with `pending_payment` status
-2. Stripe Checkout session created → user redirected to Stripe
-3. Webhook receives payment confirmation → status updated to `received`
-4. AI generates bureaucratic response → status updated to `resolved`
+2. Stripe Embedded Checkout session created → payment form displayed inline on page
+3. User completes payment → redirected to status page
+4. Verify-session endpoint confirms payment → status updated to `received`
+5. Webhook (backup) can also confirm payment with idempotency protection
+6. AI generates bureaucratic response → status updated to `resolved`
 
 ## External Dependencies
 
@@ -50,11 +52,10 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle ORM**: Schema management and queries, migrations in `./migrations`
 
 ### Payment Processing
-- **Stripe**: Handles $5 filing fee payments
-- **Webhook**: `/api/stripe/webhook` endpoint for payment confirmation
-- **Environment Variables**: 
-  - `STRIPE_WEBHOOK_SECRET` for webhook signature verification
-  - Stripe credentials fetched via Replit Connectors API
+- **Stripe**: Handles $5 filing fee payments via Embedded Checkout
+- **Credentials**: Uses `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` from secrets (user's own Stripe sandbox account). Falls back to Replit connector if secrets not set.
+- **Webhook**: `/api/stripe/webhook` endpoint as backup payment confirmation
+- **Test Card**: Use `4242 4242 4242 4242` with any future expiry and any CVC
 
 ### AI Services
 - **OpenAI API** (via Replit AI Integrations):
