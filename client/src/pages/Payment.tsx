@@ -13,12 +13,23 @@ import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe
 
 // Lazy-load Stripe with publishable key from server
 let stripePromise: Promise<Stripe | null> | null = null;
+let stripeLoadError: string | null = null;
 
 function getStripePromise(): Promise<Stripe | null> {
   if (!stripePromise) {
     stripePromise = fetch('/api/stripe/config')
-      .then(res => res.json())
-      .then(({ publishableKey }) => loadStripe(publishableKey));
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load payment configuration');
+        return res.json();
+      })
+      .then(({ publishableKey }) => {
+        if (!publishableKey) throw new Error('Payment configuration missing');
+        return loadStripe(publishableKey);
+      })
+      .catch(err => {
+        stripeLoadError = err.message;
+        return null;
+      });
   }
   return stripePromise;
 }
@@ -32,6 +43,7 @@ export default function Payment() {
   const { data: complaint, isLoading: isLoadingComplaint, error: complaintError } = useComplaint(id);
   const [showCheckout, setShowCheckout] = useState(false);
   const [stripeLoaded, setStripeLoaded] = useState(false);
+  const [stripeError, setStripeError] = useState<string | null>(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -47,7 +59,13 @@ export default function Payment() {
 
   useEffect(() => {
     // Pre-load Stripe
-    getStripePromise().then(() => setStripeLoaded(true));
+    getStripePromise().then((stripe) => {
+      if (stripe) {
+        setStripeLoaded(true);
+      } else if (stripeLoadError) {
+        setStripeError(stripeLoadError);
+      }
+    });
   }, []);
 
   const fetchClientSecret = useCallback(async () => {
@@ -132,7 +150,20 @@ export default function Payment() {
                 </div>
               </div>
 
-              {!showCheckout ? (
+              {stripeError ? (
+                <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-center">
+                  <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-2" />
+                  <p className="text-sm text-destructive">{stripeError}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={() => window.location.reload()}
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              ) : !showCheckout ? (
                 <Button 
                   data-testid="button-pay-stripe"
                   className="w-full h-12 text-lg shadow-lg" 
@@ -143,7 +174,7 @@ export default function Payment() {
                   {!stripeLoaded ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Loading...
+                      Loading Payment Form...
                     </>
                   ) : (
                     <>
@@ -151,18 +182,19 @@ export default function Payment() {
                     </>
                   )}
                 </Button>
-              ) : stripeLoaded ? (
-                <div className="mt-4" data-testid="stripe-embedded-checkout">
-                  <EmbeddedCheckoutProvider
-                    stripe={getStripePromise()}
-                    options={{ fetchClientSecret }}
-                  >
-                    <EmbeddedCheckout />
-                  </EmbeddedCheckoutProvider>
-                </div>
               ) : (
-                <div className="flex items-center justify-center p-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="space-y-4">
+                  <div data-testid="stripe-embedded-checkout">
+                    <EmbeddedCheckoutProvider
+                      stripe={getStripePromise()}
+                      options={{ fetchClientSecret }}
+                    >
+                      <EmbeddedCheckout />
+                    </EmbeddedCheckoutProvider>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Complete your payment above. You'll be redirected automatically after payment.
+                  </p>
                 </div>
               )}
             </div>
