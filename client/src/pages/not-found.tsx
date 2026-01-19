@@ -1,21 +1,39 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { Link } from "wouter";
+import { OfficialHeader } from "@/components/OfficialHeader";
+import { Button } from "@/components/ui/button";
+import { FileQuestion } from "lucide-react";
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardContent className="pt-6">
-          <div className="flex mb-4 gap-2">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <h1 className="text-2xl font-bold text-gray-900">404 Page Not Found</h1>
+    <div className="min-h-screen bg-background font-sans flex flex-col">
+      <OfficialHeader />
+      
+      <main className="flex-1 flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center space-y-6 bg-card border border-border p-12 rounded-lg paper-shadow">
+          <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+            <FileQuestion className="w-8 h-8 text-muted-foreground" />
           </div>
-
-          <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
+          
+          <div>
+            <h1 className="text-4xl font-serif font-bold text-foreground">404</h1>
+            <div className="text-sm font-mono text-muted-foreground mt-2 uppercase tracking-widest">
+              Record Not Found
+            </div>
+          </div>
+          
+          <p className="text-muted-foreground">
+            The page you are looking for has been misplaced, redacted, or never existed in our official records.
           </p>
-        </CardContent>
-      </Card>
+
+          <div className="pt-4">
+            <Link href="/">
+              <Button variant="default" className="w-full">
+                Return to Department Home
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

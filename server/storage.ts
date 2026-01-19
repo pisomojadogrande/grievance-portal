@@ -1,38 +1,45 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import { complaints, payments, type Complaint, type InsertComplaint, type Payment, type InsertPayment } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Complaints
+  createComplaint(complaint: InsertComplaint): Promise<Complaint>;
+  getComplaint(id: number): Promise<Complaint | undefined>;
+  updateComplaint(id: number, updates: Partial<Complaint>): Promise<Complaint>;
+  
+  // Payments
+  createPayment(payment: InsertPayment): Promise<Payment>;
+  getPaymentsByComplaintId(complaintId: number): Promise<Payment[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  async createComplaint(insertComplaint: InsertComplaint): Promise<Complaint> {
+    const [complaint] = await db.insert(complaints).values(insertComplaint).returning();
+    return complaint;
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getComplaint(id: number): Promise<Complaint | undefined> {
+    const [complaint] = await db.select().from(complaints).where(eq(complaints.id, id));
+    return complaint;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async updateComplaint(id: number, updates: Partial<Complaint>): Promise<Complaint> {
+    const [updated] = await db.update(complaints)
+      .set(updates)
+      .where(eq(complaints.id, id))
+      .returning();
+    return updated;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async createPayment(insertPayment: InsertPayment): Promise<Payment> {
+    const [payment] = await db.insert(payments).values(insertPayment).returning();
+    return payment;
+  }
+
+  async getPaymentsByComplaintId(complaintId: number): Promise<Payment[]> {
+    return await db.select().from(payments).where(eq(payments.complaintId, complaintId));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
