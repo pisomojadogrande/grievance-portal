@@ -97,6 +97,10 @@ export default function FileComplaint() {
                   </div>
                 </div>
 
+                <p className="text-xs text-center text-muted-foreground italic">
+                  This is a satirical demo site. No real payments are processed. Use test card: 4242 4242 4242 4242
+                </p>
+
                 <div className="flex justify-end pt-4 border-t border-border">
                   <Button 
                     type="submit" 
