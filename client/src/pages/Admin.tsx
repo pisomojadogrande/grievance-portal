@@ -30,15 +30,6 @@ export default function Admin() {
     enabled: isAuthenticated && adminCheck?.isAdmin,
   });
 
-  // Debug logging for production issues
-  console.log("Admin Debug:", { 
-    isAuthenticated, 
-    isAdmin: adminCheck?.isAdmin, 
-    complaintsCount: complaints?.length,
-    complaintsError: complaintsError?.message,
-    statsError: statsError?.message
-  });
-
   if (authLoading || adminCheckLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
