@@ -9,7 +9,8 @@ import { registerImageRoutes } from "./replit_integrations/image";
 import { registerAudioRoutes } from "./replit_integrations/audio";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { isAuthenticated } from "./replit_integrations/auth";
-import { isAdmin, getOrCreateFirstAdmin, isUserAdmin } from "./adminMiddleware";
+import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins } from "./adminMiddleware";
+import { createAdminSchema, adminLoginSchema } from "@shared/schema";
 
 // Initialize OpenAI client using the integration environment variables
 const openai = new OpenAI({
@@ -241,7 +242,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get('/api/admin/complaints', isAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/complaints', isAdminAuthenticated, isAdmin, async (req, res) => {
     try {
       const complaints = await storage.getAllComplaints();
       res.json(complaints);
@@ -251,13 +252,129 @@ export async function registerRoutes(
     }
   });
 
-  app.get('/api/admin/stats/daily', isAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/stats/daily', isAdminAuthenticated, isAdmin, async (req, res) => {
     try {
       const stats = await storage.getDailyComplaintStats();
       res.json(stats);
     } catch (err) {
       console.error('Error fetching daily stats:', err);
       res.status(500).json({ message: 'Failed to fetch stats' });
+    }
+  });
+
+  // === Password-based Admin Auth Routes ===
+
+  // Login with email/password
+  app.post('/api/admin/login', async (req: any, res) => {
+    try {
+      const input = adminLoginSchema.parse(req.body);
+      const admin = await authenticateAdmin(input.email, input.password);
+      
+      if (!admin) {
+        return res.status(401).json({ message: 'Invalid email or password' });
+      }
+      
+      // Regenerate session for security (prevent session fixation)
+      req.session.regenerate((err: any) => {
+        if (err) {
+          console.error('Session regeneration error:', err);
+          // Continue anyway - set session fields
+        }
+        
+        // Set session
+        req.session.adminId = admin.id;
+        req.session.adminEmail = admin.email;
+        
+        res.json({ success: true, email: admin.email });
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error('Login error:', err);
+      res.status(500).json({ message: 'Login failed' });
+    }
+  });
+
+  // Logout (password-based session) - properly destroy session
+  app.post('/api/admin/logout', (req: any, res) => {
+    req.session.destroy((err: any) => {
+      if (err) {
+        console.error('Session destroy error:', err);
+        // Fall back to clearing fields
+        req.session.adminId = null;
+        req.session.adminEmail = null;
+      }
+      res.json({ success: true });
+    });
+  });
+
+  // Check auth status (works for both Replit Auth and password auth)
+  app.get('/api/admin/auth-status', async (req: any, res) => {
+    // Check password-based session first - validate against DB
+    if (req.session?.adminId) {
+      const adminValid = await isAdminById(req.session.adminId);
+      if (adminValid) {
+        return res.json({ 
+          authenticated: true, 
+          authType: 'password',
+          email: req.session.adminEmail,
+          isAdmin: true
+        });
+      } else {
+        // Invalid session - clear it
+        req.session.adminId = null;
+        req.session.adminEmail = null;
+      }
+    }
+    
+    // Check Replit Auth
+    if (req.isAuthenticated?.() && req.user?.claims?.sub) {
+      const userId = req.user.claims.sub;
+      const email = req.user.claims.email || '';
+      
+      // Auto-create first admin if none exist
+      await getOrCreateFirstAdmin(userId, email);
+      const adminStatus = await isUserAdmin(userId);
+      
+      return res.json({ 
+        authenticated: true, 
+        authType: 'replit',
+        email: email,
+        isAdmin: adminStatus
+      });
+    }
+    
+    res.json({ authenticated: false, isAdmin: false });
+  });
+
+  // Create new admin user (only existing admins can do this)
+  app.post('/api/admin/users', isAdminAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const input = createAdminSchema.parse(req.body);
+      const newAdmin = await createAdminWithPassword(input.email, input.password);
+      res.status(201).json({ id: newAdmin.id, email: newAdmin.email });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      // Check for duplicate email
+      if (err.code === '23505') {
+        return res.status(400).json({ message: 'An admin with this email already exists' });
+      }
+      console.error('Error creating admin:', err);
+      res.status(500).json({ message: 'Failed to create admin user' });
+    }
+  });
+
+  // Get all admin users (for admin management)
+  app.get('/api/admin/users', isAdminAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const admins = await getAllAdmins();
+      res.json(admins);
+    } catch (err) {
+      console.error('Error fetching admins:', err);
+      res.status(500).json({ message: 'Failed to fetch admin users' });
     }
   });
 
