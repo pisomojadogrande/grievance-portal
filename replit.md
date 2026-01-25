@@ -45,6 +45,18 @@ Preferred communication style: Simple, everyday language.
 5. Webhook (backup) can also confirm payment with idempotency protection
 6. AI generates bureaucratic response → status updated to `resolved`
 
+### Admin Authentication
+The admin portal at `/admin` supports two authentication methods:
+
+1. **Replit Auth**: The first user to sign in via Replit becomes the primary admin automatically
+2. **Email/Password**: Primary admin can create additional admin accounts with email/password credentials
+
+Admin User Management:
+- Existing admins can add new admin users via the "Add Admin" button
+- New admins are assigned email/password credentials (shared out-of-band, not through the app)
+- Password-based admins log in directly on the /admin page without needing a Replit account
+- Sessions are secured with bcrypt password hashing and session regeneration on login
+
 ## External Dependencies
 
 ### Database
