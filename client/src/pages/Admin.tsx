@@ -1,36 +1,138 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, LogOut, Shield, Mail, Calendar, FileText, AlertCircle, BarChart3 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, LogOut, Shield, Mail, Calendar, FileText, AlertCircle, BarChart3, UserPlus, Users } from "lucide-react";
 import { format } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useToast } from "@/hooks/use-toast";
 import type { Complaint } from "@shared/schema";
 
 type DailyStat = { date: string; count: number };
 
-export default function Admin() {
-  const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
-  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
+type AuthStatus = {
+  authenticated: boolean;
+  authType?: 'replit' | 'password';
+  email?: string;
+  isAdmin: boolean;
+};
 
-  const { data: adminCheck, isLoading: adminCheckLoading } = useQuery<{ isAdmin: boolean; wasFirstAdmin: boolean }>({
-    queryKey: ["/api/admin/check"],
-    enabled: isAuthenticated,
+type AdminUser = {
+  id: number;
+  email: string;
+  hasPassword: boolean;
+  createdAt: string | null;
+};
+
+export default function Admin() {
+  const { user, isLoading: authLoading, isAuthenticated: replitAuthenticated, logout: replitLogout } = useAuth();
+  const { toast } = useToast();
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
+  const [showAddAdmin, setShowAddAdmin] = useState(false);
+  
+  // Password login form state
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  
+  // New admin form state
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+
+  // Use the unified auth-status endpoint
+  const { data: authStatus, isLoading: authStatusLoading, refetch: refetchAuthStatus } = useQuery<AuthStatus>({
+    queryKey: ["/api/admin/auth-status"],
   });
+
+  const isAuthenticated = authStatus?.authenticated || false;
+  const isAdmin = authStatus?.isAdmin || false;
 
   const { data: complaints, isLoading: complaintsLoading, error: complaintsError } = useQuery<Complaint[]>({
     queryKey: ["/api/admin/complaints"],
-    enabled: isAuthenticated && adminCheck?.isAdmin,
+    enabled: isAuthenticated && isAdmin,
   });
 
-  const { data: dailyStats, isLoading: statsLoading, error: statsError } = useQuery<DailyStat[]>({
+  const { data: dailyStats, isLoading: statsLoading } = useQuery<DailyStat[]>({
     queryKey: ["/api/admin/stats/daily"],
-    enabled: isAuthenticated && adminCheck?.isAdmin,
+    enabled: isAuthenticated && isAdmin,
   });
 
-  if (authLoading || adminCheckLoading) {
+  const { data: adminUsers } = useQuery<AdminUser[]>({
+    queryKey: ["/api/admin/users"],
+    enabled: isAuthenticated && isAdmin,
+  });
+
+  // Password login mutation
+  const loginMutation = useMutation({
+    mutationFn: async (data: { email: string; password: string }) => {
+      const res = await apiRequest("POST", "/api/admin/login", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Login successful" });
+      refetchAuthStatus();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/complaints"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats/daily"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Login failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Password logout mutation
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/logout");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Logged out" });
+      refetchAuthStatus();
+    },
+  });
+
+  // Create admin mutation
+  const createAdminMutation = useMutation({
+    mutationFn: async (data: { email: string; password: string }) => {
+      const res = await apiRequest("POST", "/api/admin/users", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Admin user created", description: "Share the credentials securely with the new admin." });
+      setNewAdminEmail("");
+      setNewAdminPassword("");
+      setShowAddAdmin(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create admin", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleLogout = () => {
+    if (authStatus?.authType === 'password') {
+      logoutMutation.mutate();
+    } else {
+      replitLogout();
+    }
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    loginMutation.mutate({ email: loginEmail, password: loginPassword });
+  };
+
+  const handleCreateAdmin = (e: React.FormEvent) => {
+    e.preventDefault();
+    createAdminMutation.mutate({ email: newAdminEmail, password: newAdminPassword });
+  };
+
+  if (authLoading || authStatusLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -54,17 +156,62 @@ export default function Admin() {
               Sign in to access the complaints administration dashboard
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="admin@example.com"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  required
+                  data-testid="input-login-email"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  required
+                  data-testid="input-login-password"
+                />
+              </div>
+              <Button 
+                type="submit" 
+                className="w-full" 
+                disabled={loginMutation.isPending}
+                data-testid="button-login-submit"
+              >
+                {loginMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Sign In
+              </Button>
+            </form>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Or</span>
+              </div>
+            </div>
+
             <Button 
+              variant="outline"
               className="w-full" 
-              size="lg"
               onClick={() => window.location.href = "/api/login?returnTo=/admin"}
-              data-testid="button-admin-login"
+              data-testid="button-admin-login-replit"
             >
               Sign In with Replit
             </Button>
-            <p className="text-xs text-center text-muted-foreground mt-4">
-              The first user to sign in will be granted admin access.
+            <p className="text-xs text-center text-muted-foreground">
+              The first Replit user to sign in will be granted admin access.
             </p>
           </CardContent>
         </Card>
@@ -72,7 +219,7 @@ export default function Admin() {
     );
   }
 
-  if (!adminCheck?.isAdmin) {
+  if (!isAdmin) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
@@ -87,12 +234,12 @@ export default function Admin() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground text-center">
-              Signed in as: {user?.email}
+              Signed in as: {authStatus?.email || user?.email}
             </p>
             <Button 
               variant="outline" 
               className="w-full"
-              onClick={() => logout()}
+              onClick={handleLogout}
               data-testid="button-logout"
             >
               <LogOut className="w-4 h-4 mr-2" />
@@ -128,12 +275,12 @@ export default function Admin() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground hidden sm:block">
-              {user?.email}
+              {authStatus?.email || user?.email}
             </span>
             <Button 
               variant="ghost" 
               size="sm"
-              onClick={() => logout()}
+              onClick={handleLogout}
               data-testid="button-header-logout"
             >
               <LogOut className="w-4 h-4" />
@@ -143,17 +290,110 @@ export default function Admin() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {adminCheck?.wasFirstAdmin && (
-          <Card className="border-primary/50 bg-primary/5">
-            <CardContent className="py-3">
-              <p className="text-sm text-primary flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                You are the first admin. You have been granted admin access automatically.
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        {/* Admin Users Management Section */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Admin Users ({adminUsers?.length || 0})
+              </CardTitle>
+              <CardDescription>Manage admin access</CardDescription>
+            </div>
+            <Button 
+              size="sm" 
+              onClick={() => setShowAddAdmin(!showAddAdmin)}
+              data-testid="button-toggle-add-admin"
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              Add Admin
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {showAddAdmin && (
+              <form onSubmit={handleCreateAdmin} className="p-4 border rounded-md space-y-4 bg-muted/20">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-admin-email">Email</Label>
+                    <Input
+                      id="new-admin-email"
+                      type="email"
+                      placeholder="newadmin@example.com"
+                      value={newAdminEmail}
+                      onChange={(e) => setNewAdminEmail(e.target.value)}
+                      required
+                      data-testid="input-new-admin-email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-admin-password">Password (min 8 chars)</Label>
+                    <Input
+                      id="new-admin-password"
+                      type="password"
+                      placeholder="Create password"
+                      value={newAdminPassword}
+                      onChange={(e) => setNewAdminPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      data-testid="input-new-admin-password"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    type="submit" 
+                    disabled={createAdminMutation.isPending}
+                    data-testid="button-create-admin"
+                  >
+                    {createAdminMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Create Admin
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setShowAddAdmin(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Share these credentials securely with the new admin (not through the app).
+                </p>
+              </form>
+            )}
+            
+            {adminUsers && adminUsers.length > 0 && (
+              <div className="space-y-2" data-testid="list-admin-users">
+                {adminUsers.map((admin) => (
+                  <div 
+                    key={admin.id} 
+                    className="flex items-center justify-between p-3 border rounded-md"
+                    data-testid={`admin-user-${admin.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                        <Mail className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{admin.email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {admin.hasPassword ? "Password login" : "Replit login"}
+                        </p>
+                      </div>
+                    </div>
+                    {admin.createdAt && (
+                      <span className="text-xs text-muted-foreground">
+                        Added {format(new Date(admin.createdAt), "MMM d, yyyy")}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
+        {/* Daily Stats Chart */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -193,6 +433,7 @@ export default function Admin() {
           </CardContent>
         </Card>
 
+        {/* Complaints Grid */}
         <div className="grid lg:grid-cols-2 gap-6">
           <Card className="lg:col-span-1">
             <CardHeader>
