@@ -1,11 +1,13 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { OfficialHeader } from "@/components/OfficialHeader";
 import { OfficialCard } from "@/components/OfficialCard";
 import { Button } from "@/components/ui/button";
-import { FileText, ArrowRight, ShieldCheck, Clock } from "lucide-react";
+import { FileText, ShieldCheck, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Home() {
+  const [, setLocation] = useLocation();
+
   return (
     <div className="min-h-screen bg-background font-sans">
       <OfficialHeader />
@@ -32,12 +34,15 @@ export default function Home() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/file-complaint">
-                <Button size="lg" className="h-14 px-8 text-base shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all hover:-translate-y-0.5">
-                  <FileText className="mr-2 h-5 w-5" />
-                  File a Complaint
-                </Button>
-              </Link>
+              <Button 
+                size="lg" 
+                className="h-14 px-8 text-base shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
+                onClick={() => setLocation("/file-complaint")}
+                data-testid="button-file-complaint"
+              >
+                <FileText className="mr-2 h-5 w-5" />
+                File a Complaint
+              </Button>
               <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-lg border border-border/50 text-sm font-mono text-muted-foreground">
                 <span>Filing Fee:</span>
                 <span className="font-bold text-foreground">$5.00</span>
