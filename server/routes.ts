@@ -8,6 +8,8 @@ import { registerChatRoutes } from "./replit_integrations/chat";
 import { registerImageRoutes } from "./replit_integrations/image";
 import { registerAudioRoutes } from "./replit_integrations/audio";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { isAuthenticated } from "./replit_integrations/auth";
+import { isAdmin, getOrCreateFirstAdmin, isUserAdmin } from "./adminMiddleware";
 
 // Initialize OpenAI client using the integration environment variables
 const openai = new OpenAI({
@@ -216,6 +218,46 @@ export async function registerRoutes(
         });
       }
       throw err;
+    }
+  });
+
+  // === Admin Routes ===
+
+  app.get('/api/admin/check', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const email = req.user.claims.email || '';
+      
+      const isFirstAdmin = await getOrCreateFirstAdmin(userId, email);
+      const adminStatus = await isUserAdmin(userId);
+      
+      res.json({ 
+        isAdmin: adminStatus,
+        wasFirstAdmin: isFirstAdmin && adminStatus
+      });
+    } catch (err) {
+      console.error('Error checking admin status:', err);
+      res.status(500).json({ message: 'Failed to check admin status' });
+    }
+  });
+
+  app.get('/api/admin/complaints', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const complaints = await storage.getAllComplaints();
+      res.json(complaints);
+    } catch (err) {
+      console.error('Error fetching complaints:', err);
+      res.status(500).json({ message: 'Failed to fetch complaints' });
+    }
+  });
+
+  app.get('/api/admin/stats/daily', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getDailyComplaintStats();
+      res.json(stats);
+    } catch (err) {
+      console.error('Error fetching daily stats:', err);
+      res.status(500).json({ message: 'Failed to fetch stats' });
     }
   });
 
