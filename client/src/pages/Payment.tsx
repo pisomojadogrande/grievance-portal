@@ -231,6 +231,8 @@ function PaymentSkeleton() {
 }
 
 function PaymentError() {
+  const [, setLocation] = useLocation();
+  
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <OfficialHeader />
@@ -241,8 +243,12 @@ function PaymentError() {
           </div>
           <h2 className="text-xl font-bold mb-2">Error Loading Case</h2>
           <p className="text-muted-foreground mb-6">We could not locate the complaint record. It may have expired or the ID is incorrect.</p>
-          <Button asChild variant="outline">
-            <a href="/">Return Home</a>
+          <Button 
+            variant="outline"
+            onClick={() => setLocation("/")}
+            data-testid="button-return-home"
+          >
+            Return Home
           </Button>
         </div>
       </div>

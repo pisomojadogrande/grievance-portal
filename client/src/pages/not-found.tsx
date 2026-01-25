@@ -1,9 +1,11 @@
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { OfficialHeader } from "@/components/OfficialHeader";
 import { Button } from "@/components/ui/button";
 import { FileQuestion } from "lucide-react";
 
 export default function NotFound() {
+  const [, setLocation] = useLocation();
+
   return (
     <div className="min-h-screen bg-background font-sans flex flex-col">
       <OfficialHeader />
@@ -26,11 +28,14 @@ export default function NotFound() {
           </p>
 
           <div className="pt-4">
-            <Link href="/">
-              <Button variant="default" className="w-full">
-                Return to Department Home
-              </Button>
-            </Link>
+            <Button 
+              variant="default" 
+              className="w-full"
+              onClick={() => setLocation("/")}
+              data-testid="button-return-home"
+            >
+              Return to Department Home
+            </Button>
           </div>
         </div>
       </main>
