@@ -9,14 +9,32 @@ export * from "./models/chat";
 export * from "./models/auth";
 
 // Admin users table - tracks which users have admin access
+// Supports both Replit Auth (userId) and email/password auth (passwordHash)
 export const adminUsers = pgTable("admin_users", {
   id: serial("id").primaryKey(),
-  userId: text("user_id").notNull().unique(),
-  email: text("email").notNull(),
+  userId: text("user_id").unique(), // For Replit Auth users (nullable for password-based admins)
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"), // For email/password admins (nullable for Replit Auth admins)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export type AdminUser = typeof adminUsers.$inferSelect;
+
+// Schema for creating a new admin user with password
+export const createAdminSchema = z.object({
+  email: z.string().email("Valid email required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+export type CreateAdminRequest = z.infer<typeof createAdminSchema>;
+
+// Schema for admin login
+export const adminLoginSchema = z.object({
+  email: z.string().email("Valid email required"),
+  password: z.string().min(1, "Password required"),
+});
+
+export type AdminLoginRequest = z.infer<typeof adminLoginSchema>;
 
 // === TABLE DEFINITIONS ===
 export const complaints = pgTable("complaints", {
