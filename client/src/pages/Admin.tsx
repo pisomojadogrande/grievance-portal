@@ -20,14 +20,23 @@ export default function Admin() {
     enabled: isAuthenticated,
   });
 
-  const { data: complaints, isLoading: complaintsLoading } = useQuery<Complaint[]>({
+  const { data: complaints, isLoading: complaintsLoading, error: complaintsError } = useQuery<Complaint[]>({
     queryKey: ["/api/admin/complaints"],
     enabled: isAuthenticated && adminCheck?.isAdmin,
   });
 
-  const { data: dailyStats, isLoading: statsLoading } = useQuery<DailyStat[]>({
+  const { data: dailyStats, isLoading: statsLoading, error: statsError } = useQuery<DailyStat[]>({
     queryKey: ["/api/admin/stats/daily"],
     enabled: isAuthenticated && adminCheck?.isAdmin,
+  });
+
+  // Debug logging for production issues
+  console.log("Admin Debug:", { 
+    isAuthenticated, 
+    isAdmin: adminCheck?.isAdmin, 
+    complaintsCount: complaints?.length,
+    complaintsError: complaintsError?.message,
+    statsError: statsError?.message
   });
 
   if (authLoading || adminCheckLoading) {
@@ -206,6 +215,10 @@ export default function Admin() {
               {complaintsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : complaintsError ? (
+                <div className="text-center py-8 text-destructive">
+                  Error loading complaints: {complaintsError.message}
                 </div>
               ) : complaints && complaints.length > 0 ? (
                 <div className="space-y-2 max-h-96 overflow-y-auto" data-testid="list-complaints">
