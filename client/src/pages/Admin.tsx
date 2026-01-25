@@ -58,7 +58,7 @@ export default function Admin() {
             <Button 
               className="w-full" 
               size="lg"
-              onClick={() => window.location.href = "/api/login"}
+              onClick={() => window.location.href = "/api/login?returnTo=/admin"}
               data-testid="button-admin-login"
             >
               Sign In with Replit
