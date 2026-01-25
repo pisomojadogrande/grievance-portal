@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import FileComplaint from "@/pages/FileComplaint";
 import Payment from "@/pages/Payment";
 import Status from "@/pages/Status";
+import Admin from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/file-complaint" component={FileComplaint} />
       <Route path="/payment/:id" component={Payment} />
       <Route path="/status/:id" component={Status} />
+      <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
   );

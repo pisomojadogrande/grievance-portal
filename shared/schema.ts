@@ -5,6 +5,19 @@ import { z } from "zod";
 // Import Chat Models from Integration
 export * from "./models/chat";
 
+// Import Auth Models from Integration (REQUIRED for Replit Auth)
+export * from "./models/auth";
+
+// Admin users table - tracks which users have admin access
+export const adminUsers = pgTable("admin_users", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  email: text("email").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AdminUser = typeof adminUsers.$inferSelect;
+
 // === TABLE DEFINITIONS ===
 export const complaints = pgTable("complaints", {
   id: serial("id").primaryKey(),
@@ -50,6 +63,7 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 export type Complaint = typeof complaints.$inferSelect;
 export type InsertComplaint = z.infer<typeof insertComplaintSchema>;
 export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
 export type CreateComplaintRequest = InsertComplaint;
 export type ProcessPaymentRequest = {
