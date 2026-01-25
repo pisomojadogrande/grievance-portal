@@ -122,3 +122,21 @@ export async function isFirstAdmin(adminId: number): Promise<boolean> {
   const firstAdmin = await getFirstAdmin();
   return firstAdmin !== null && firstAdmin.id === adminId;
 }
+
+// Reset password for an admin (only first admin can do this)
+export async function resetAdminPassword(adminId: number, newPassword: string): Promise<boolean> {
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const result = await db.update(adminUsers)
+    .set({ passwordHash })
+    .where(eq(adminUsers.id, adminId))
+    .returning({ id: adminUsers.id });
+  return result.length > 0;
+}
+
+// Delete an admin user (only first admin can do this, cannot delete self)
+export async function deleteAdmin(adminId: number): Promise<boolean> {
+  const result = await db.delete(adminUsers)
+    .where(eq(adminUsers.id, adminId))
+    .returning({ id: adminUsers.id });
+  return result.length > 0;
+}

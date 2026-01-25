@@ -54,6 +54,8 @@ The admin portal at `/admin` supports two authentication methods:
 Admin User Management:
 - Only the first (primary) admin can add new admin users via the "Add Admin" button
 - The "Admin Users" section is only visible to the primary admin (positioned at bottom of page)
+- Primary admin can reset passwords of other admins (key icon button)
+- Primary admin can delete other admins (trash icon button with confirmation)
 - New admins are assigned email/password credentials (shared out-of-band, not through the app)
 - Password-based admins log in directly on the /admin page without needing a Replit account
 - Sessions are secured with bcrypt password hashing and session regeneration on login
