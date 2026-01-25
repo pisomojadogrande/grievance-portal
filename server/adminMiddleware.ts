@@ -110,3 +110,15 @@ export async function getAllAdmins(): Promise<Array<{ id: number; email: string;
     createdAt: admin.createdAt,
   }));
 }
+
+// Get the first admin (lowest ID - the original admin)
+export async function getFirstAdmin(): Promise<{ id: number; email: string } | null> {
+  const admins = await db.select().from(adminUsers).orderBy(adminUsers.id).limit(1);
+  return admins.length > 0 ? { id: admins[0].id, email: admins[0].email } : null;
+}
+
+// Check if a given admin ID is the first (primary) admin
+export async function isFirstAdmin(adminId: number): Promise<boolean> {
+  const firstAdmin = await getFirstAdmin();
+  return firstAdmin !== null && firstAdmin.id === adminId;
+}
