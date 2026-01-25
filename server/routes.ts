@@ -9,7 +9,7 @@ import { registerImageRoutes } from "./replit_integrations/image";
 import { registerAudioRoutes } from "./replit_integrations/audio";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { isAuthenticated } from "./replit_integrations/auth";
-import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins } from "./adminMiddleware";
+import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins, isFirstAdmin } from "./adminMiddleware";
 import { createAdminSchema, adminLoginSchema } from "@shared/schema";
 
 // Initialize OpenAI client using the integration environment variables
@@ -315,11 +315,13 @@ export async function registerRoutes(
     if (req.session?.adminId) {
       const adminValid = await isAdminById(req.session.adminId);
       if (adminValid) {
+        const isPrimary = await isFirstAdmin(req.session.adminId);
         return res.json({ 
           authenticated: true, 
           authType: 'password',
           email: req.session.adminEmail,
-          isAdmin: true
+          isAdmin: true,
+          isFirstAdmin: isPrimary
         });
       } else {
         // Invalid session - clear it
@@ -337,20 +339,42 @@ export async function registerRoutes(
       await getOrCreateFirstAdmin(userId, email);
       const adminStatus = await isUserAdmin(userId);
       
+      // Get admin ID to check if first admin
+      const { db } = await import('./db');
+      const { adminUsers } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const [adminUser] = await db.select().from(adminUsers).where(eq(adminUsers.userId, userId));
+      const isPrimary = adminUser ? await isFirstAdmin(adminUser.id) : false;
+      
       return res.json({ 
         authenticated: true, 
         authType: 'replit',
         email: email,
-        isAdmin: adminStatus
+        isAdmin: adminStatus,
+        isFirstAdmin: isPrimary
       });
     }
     
-    res.json({ authenticated: false, isAdmin: false });
+    res.json({ authenticated: false, isAdmin: false, isFirstAdmin: false });
   });
 
-  // Create new admin user (only existing admins can do this)
+  // Create new admin user (only the first/primary admin can do this)
   app.post('/api/admin/users', isAdminAuthenticated, isAdmin, async (req: any, res) => {
     try {
+      // Get the current admin's ID
+      let currentAdminId: number | null = null;
+      
+      if (req.session?.adminId) {
+        currentAdminId = req.session.adminId;
+      } else if (req.adminUser?.id) {
+        currentAdminId = req.adminUser.id;
+      }
+      
+      // Only the first admin can create other admins
+      if (!currentAdminId || !(await isFirstAdmin(currentAdminId))) {
+        return res.status(403).json({ message: 'Only the primary administrator can add other admins' });
+      }
+      
       const input = createAdminSchema.parse(req.body);
       const newAdmin = await createAdminWithPassword(input.email, input.password);
       res.status(201).json({ id: newAdmin.id, email: newAdmin.email });

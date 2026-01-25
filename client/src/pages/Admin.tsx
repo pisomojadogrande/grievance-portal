@@ -20,6 +20,7 @@ type AuthStatus = {
   authType?: 'replit' | 'password';
   email?: string;
   isAdmin: boolean;
+  isFirstAdmin?: boolean;
 };
 
 type AdminUser = {
@@ -61,9 +62,11 @@ export default function Admin() {
     enabled: isAuthenticated && isAdmin,
   });
 
+  const isFirstAdminUser = authStatus?.isFirstAdmin || false;
+
   const { data: adminUsers } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
-    enabled: isAuthenticated && isAdmin,
+    enabled: isAuthenticated && isAdmin && isFirstAdminUser,
   });
 
   // Password login mutation
@@ -290,109 +293,6 @@ export default function Admin() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Admin Users Management Section */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Admin Users ({adminUsers?.length || 0})
-              </CardTitle>
-              <CardDescription>Manage admin access</CardDescription>
-            </div>
-            <Button 
-              size="sm" 
-              onClick={() => setShowAddAdmin(!showAddAdmin)}
-              data-testid="button-toggle-add-admin"
-            >
-              <UserPlus className="w-4 h-4 mr-2" />
-              Add Admin
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {showAddAdmin && (
-              <form onSubmit={handleCreateAdmin} className="p-4 border rounded-md space-y-4 bg-muted/20">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="new-admin-email">Email</Label>
-                    <Input
-                      id="new-admin-email"
-                      type="email"
-                      placeholder="newadmin@example.com"
-                      value={newAdminEmail}
-                      onChange={(e) => setNewAdminEmail(e.target.value)}
-                      required
-                      data-testid="input-new-admin-email"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="new-admin-password">Password (min 8 chars)</Label>
-                    <Input
-                      id="new-admin-password"
-                      type="password"
-                      placeholder="Create password"
-                      value={newAdminPassword}
-                      onChange={(e) => setNewAdminPassword(e.target.value)}
-                      required
-                      minLength={8}
-                      data-testid="input-new-admin-password"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    type="submit" 
-                    disabled={createAdminMutation.isPending}
-                    data-testid="button-create-admin"
-                  >
-                    {createAdminMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Create Admin
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setShowAddAdmin(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Share these credentials securely with the new admin (not through the app).
-                </p>
-              </form>
-            )}
-            
-            {adminUsers && adminUsers.length > 0 && (
-              <div className="space-y-2" data-testid="list-admin-users">
-                {adminUsers.map((admin) => (
-                  <div 
-                    key={admin.id} 
-                    className="flex items-center justify-between p-3 border rounded-md"
-                    data-testid={`admin-user-${admin.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                        <Mail className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{admin.email}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {admin.hasPassword ? "Password login" : "Replit login"}
-                        </p>
-                      </div>
-                    </div>
-                    {admin.createdAt && (
-                      <span className="text-xs text-muted-foreground">
-                        Added {format(new Date(admin.createdAt), "MMM d, yyyy")}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Daily Stats Chart */}
         <Card>
           <CardHeader>
@@ -564,6 +464,111 @@ export default function Admin() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Admin Users Management Section - Only visible to first/primary admin */}
+        {isFirstAdminUser && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Admin Users ({adminUsers?.length || 0})
+                </CardTitle>
+                <CardDescription>Manage admin access</CardDescription>
+              </div>
+              <Button 
+                size="sm" 
+                onClick={() => setShowAddAdmin(!showAddAdmin)}
+                data-testid="button-toggle-add-admin"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add Admin
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {showAddAdmin && (
+                <form onSubmit={handleCreateAdmin} className="p-4 border rounded-md space-y-4 bg-muted/20">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="new-admin-email">Email</Label>
+                      <Input
+                        id="new-admin-email"
+                        type="email"
+                        placeholder="newadmin@example.com"
+                        value={newAdminEmail}
+                        onChange={(e) => setNewAdminEmail(e.target.value)}
+                        required
+                        data-testid="input-new-admin-email"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-admin-password">Password (min 8 chars)</Label>
+                      <Input
+                        id="new-admin-password"
+                        type="password"
+                        placeholder="Create password"
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        required
+                        minLength={8}
+                        data-testid="input-new-admin-password"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      type="submit" 
+                      disabled={createAdminMutation.isPending}
+                      data-testid="button-create-admin"
+                    >
+                      {createAdminMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      Create Admin
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setShowAddAdmin(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Share these credentials securely with the new admin (not through the app).
+                  </p>
+                </form>
+              )}
+              
+              {adminUsers && adminUsers.length > 0 && (
+                <div className="space-y-2" data-testid="list-admin-users">
+                  {adminUsers.map((admin) => (
+                    <div 
+                      key={admin.id} 
+                      className="flex items-center justify-between p-3 border rounded-md"
+                      data-testid={`admin-user-${admin.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                          <Mail className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{admin.email}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {admin.hasPassword ? "Password login" : "Replit login"}
+                          </p>
+                        </div>
+                      </div>
+                      {admin.createdAt && (
+                        <span className="text-xs text-muted-foreground">
+                          Added {format(new Date(admin.createdAt), "MMM d, yyyy")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );
