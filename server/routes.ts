@@ -9,8 +9,8 @@ import { registerImageRoutes } from "./replit_integrations/image";
 import { registerAudioRoutes } from "./replit_integrations/audio";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { isAuthenticated } from "./replit_integrations/auth";
-import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins, isFirstAdmin } from "./adminMiddleware";
-import { createAdminSchema, adminLoginSchema } from "@shared/schema";
+import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins, isFirstAdmin, resetAdminPassword, deleteAdmin } from "./adminMiddleware";
+import { createAdminSchema, adminLoginSchema, resetAdminPasswordSchema } from "@shared/schema";
 
 // Initialize OpenAI client using the integration environment variables
 const openai = new OpenAI({
@@ -399,6 +399,82 @@ export async function registerRoutes(
     } catch (err) {
       console.error('Error fetching admins:', err);
       res.status(500).json({ message: 'Failed to fetch admin users' });
+    }
+  });
+
+  // Reset admin password (only first admin can do this)
+  app.patch('/api/admin/users/:id/password', isAdminAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const targetAdminId = Number(req.params.id);
+      
+      // Get the current admin's ID
+      let currentAdminId: number | null = null;
+      if (req.session?.adminId) {
+        currentAdminId = req.session.adminId;
+      } else if (req.adminUser?.id) {
+        currentAdminId = req.adminUser.id;
+      }
+      
+      // Only the first admin can reset passwords
+      if (!currentAdminId || !(await isFirstAdmin(currentAdminId))) {
+        return res.status(403).json({ message: 'Only the primary administrator can reset passwords' });
+      }
+      
+      // Cannot reset password of the first admin (they should use their own method)
+      if (await isFirstAdmin(targetAdminId)) {
+        return res.status(403).json({ message: 'Cannot reset password of the primary administrator' });
+      }
+      
+      const input = resetAdminPasswordSchema.parse(req.body);
+      const success = await resetAdminPassword(targetAdminId, input.password);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Admin user not found' });
+      }
+      
+      res.json({ message: 'Password reset successfully' });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error('Error resetting admin password:', err);
+      res.status(500).json({ message: 'Failed to reset password' });
+    }
+  });
+
+  // Delete admin user (only first admin can do this)
+  app.delete('/api/admin/users/:id', isAdminAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const targetAdminId = Number(req.params.id);
+      
+      // Get the current admin's ID
+      let currentAdminId: number | null = null;
+      if (req.session?.adminId) {
+        currentAdminId = req.session.adminId;
+      } else if (req.adminUser?.id) {
+        currentAdminId = req.adminUser.id;
+      }
+      
+      // Only the first admin can delete other admins
+      if (!currentAdminId || !(await isFirstAdmin(currentAdminId))) {
+        return res.status(403).json({ message: 'Only the primary administrator can delete admins' });
+      }
+      
+      // Cannot delete the first admin
+      if (await isFirstAdmin(targetAdminId)) {
+        return res.status(403).json({ message: 'Cannot delete the primary administrator' });
+      }
+      
+      const success = await deleteAdmin(targetAdminId);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Admin user not found' });
+      }
+      
+      res.json({ message: 'Admin user deleted successfully' });
+    } catch (err) {
+      console.error('Error deleting admin:', err);
+      res.status(500).json({ message: 'Failed to delete admin user' });
     }
   });
 

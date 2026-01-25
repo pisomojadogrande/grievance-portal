@@ -36,6 +36,13 @@ export const adminLoginSchema = z.object({
 
 export type AdminLoginRequest = z.infer<typeof adminLoginSchema>;
 
+// Schema for resetting admin password
+export const resetAdminPasswordSchema = z.object({
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+export type ResetAdminPasswordRequest = z.infer<typeof resetAdminPasswordSchema>;
+
 // === TABLE DEFINITIONS ===
 export const complaints = pgTable("complaints", {
   id: serial("id").primaryKey(),

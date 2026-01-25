@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, LogOut, Shield, Mail, Calendar, FileText, AlertCircle, BarChart3, UserPlus, Users } from "lucide-react";
+import { Loader2, LogOut, Shield, Mail, Calendar, FileText, AlertCircle, BarChart3, UserPlus, Users, KeyRound, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +43,10 @@ export default function Admin() {
   // New admin form state
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [newAdminPassword, setNewAdminPassword] = useState("");
+  
+  // Reset password form state
+  const [resetPasswordAdminId, setResetPasswordAdminId] = useState<number | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
 
   // Use the unified auth-status endpoint
   const { data: authStatus, isLoading: authStatusLoading, refetch: refetchAuthStatus } = useQuery<AuthStatus>({
@@ -117,6 +121,37 @@ export default function Admin() {
     },
   });
 
+  // Reset password mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ adminId, password }: { adminId: number; password: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${adminId}/password`, { password });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Password reset", description: "Share the new password securely with the admin." });
+      setResetPasswordAdminId(null);
+      setResetPassword("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to reset password", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Delete admin mutation
+  const deleteAdminMutation = useMutation({
+    mutationFn: async (adminId: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/users/${adminId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Admin deleted" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete admin", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleLogout = () => {
     if (authStatus?.authType === 'password') {
       logoutMutation.mutate();
@@ -133,6 +168,19 @@ export default function Admin() {
   const handleCreateAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     createAdminMutation.mutate({ email: newAdminEmail, password: newAdminPassword });
+  };
+
+  const handleResetPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (resetPasswordAdminId) {
+      resetPasswordMutation.mutate({ adminId: resetPasswordAdminId, password: resetPassword });
+    }
+  };
+
+  const handleDeleteAdmin = (adminId: number, email: string) => {
+    if (window.confirm(`Are you sure you want to delete admin "${email}"? This cannot be undone.`)) {
+      deleteAdminMutation.mutate(adminId);
+    }
   };
 
   if (authLoading || authStatusLoading) {
@@ -540,30 +588,97 @@ export default function Admin() {
               
               {adminUsers && adminUsers.length > 0 && (
                 <div className="space-y-2" data-testid="list-admin-users">
-                  {adminUsers.map((admin) => (
-                    <div 
-                      key={admin.id} 
-                      className="flex items-center justify-between p-3 border rounded-md"
-                      data-testid={`admin-user-${admin.id}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                          <Mail className="w-4 h-4 text-primary" />
+                  {adminUsers.map((admin, index) => {
+                    const isFirst = index === 0;
+                    return (
+                      <div 
+                        key={admin.id} 
+                        className="p-3 border rounded-md space-y-3"
+                        data-testid={`admin-user-${admin.id}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                              <Mail className="w-4 h-4 text-primary" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium">{admin.email}</p>
+                                {isFirst && <Badge variant="secondary">Primary</Badge>}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {admin.hasPassword ? "Password login" : "Replit login"}
+                                {admin.createdAt && ` - Added ${format(new Date(admin.createdAt), "MMM d, yyyy")}`}
+                              </p>
+                            </div>
+                          </div>
+                          {!isFirst && (
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                size="icon" 
+                                variant="ghost"
+                                onClick={() => {
+                                  setResetPasswordAdminId(admin.id);
+                                  setResetPassword("");
+                                }}
+                                title="Reset password"
+                                data-testid={`button-reset-password-${admin.id}`}
+                              >
+                                <KeyRound className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                size="icon" 
+                                variant="ghost"
+                                onClick={() => handleDeleteAdmin(admin.id, admin.email)}
+                                disabled={deleteAdminMutation.isPending}
+                                title="Delete admin"
+                                data-testid={`button-delete-admin-${admin.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">{admin.email}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {admin.hasPassword ? "Password login" : "Replit login"}
-                          </p>
-                        </div>
+                        
+                        {resetPasswordAdminId === admin.id && (
+                          <form onSubmit={handleResetPassword} className="p-3 bg-muted/30 rounded-md space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor={`reset-password-${admin.id}`}>New Password (min 8 chars)</Label>
+                              <Input
+                                id={`reset-password-${admin.id}`}
+                                type="password"
+                                placeholder="Enter new password"
+                                value={resetPassword}
+                                onChange={(e) => setResetPassword(e.target.value)}
+                                required
+                                minLength={8}
+                                data-testid={`input-reset-password-${admin.id}`}
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <Button 
+                                type="submit" 
+                                size="sm"
+                                disabled={resetPasswordMutation.isPending}
+                                data-testid={`button-submit-reset-password-${admin.id}`}
+                              >
+                                {resetPasswordMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                Reset Password
+                              </Button>
+                              <Button 
+                                type="button" 
+                                size="sm"
+                                variant="outline" 
+                                onClick={() => setResetPasswordAdminId(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </form>
+                        )}
                       </div>
-                      {admin.createdAt && (
-                        <span className="text-xs text-muted-foreground">
-                          Added {format(new Date(admin.createdAt), "MMM d, yyyy")}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
