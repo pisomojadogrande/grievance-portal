@@ -146,3 +146,6 @@ server/public
 # Database backups
 backup.sql
 admin-users.txt
+
+# Lambda deployment package
+lambda.zip
