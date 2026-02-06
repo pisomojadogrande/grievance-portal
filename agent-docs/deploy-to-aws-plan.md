@@ -67,13 +67,6 @@ Supporting Services:
 
 ## EXECUTION ORDER
 
-**IMPORTANT:** The 12 phases below are numbered and ordered correctly for execution. However, during reorganization, some phase content got mixed up:
-- Phase 6 may contain CI/CD content that belongs in Phase 9
-- Phase 9 may contain monitoring content that belongs in Phase 10
-- Review each phase's content before executing to ensure it matches the phase title
-
-We will clean up the content as we work through each phase.
-
 Phases must be completed in this order for verifiable progress:
 
 1. **Phase 1: Pre-Deployment Setup** - AWS account, tools, prerequisites
@@ -680,6 +673,8 @@ aws cognito-idp list-users --user-pool-id $USER_POOL_ID
 ## Phase 6: Deploy Lambda + API Gateway
 
 **Goal:** Deploy application to AWS via CDK
+
+**Validation Criteria:**
 - [ ] CDK deployment succeeds: `cdk deploy ComputeStack` completes
 - [ ] Lambda function appears in AWS Console
 - [ ] Lambda function has correct IAM permissions (SSM, Bedrock, DSQL)
@@ -692,260 +687,45 @@ aws cognito-idp list-users --user-pool-id $USER_POOL_ID
 - [ ] Test cold start time (should be <3 seconds)
 - [ ] Test warm invocation time (should be <500ms)
 
-**Create** `Dockerfile`:
+### 6.1 Build Lambda Package
 
-```dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --production
-COPY --from=builder /app/dist ./dist
-EXPOSE 3000
-CMD ["node", "dist/index.cjs"]
-```
-
-### 4.2 .dockerignore
-
-**Create** `.dockerignore`:
-```
-node_modules
-.git
-.env
-*.log
-dist
-.replit
-replit.nix
-```
-
-### 4.3 Docker Compose for Local Development
-
-**Create** `docker-compose.yml`:
-```yaml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: grievance_portal
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/grievance_portal
-      NODE_ENV: development
-      AWS_REGION: us-east-1
-      # Add other env vars from .env.local
-    depends_on:
-      - postgres
-    volumes:
-      - .:/app
-      - /app/node_modules
-
-volumes:
-  postgres_data:
-```
-
-**Create** `.env.local` for local development (gitignored):
 ```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/grievance_portal
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-SESSION_SECRET=local-dev-secret
-AWS_REGION=us-east-1
-# Use AWS credentials from ~/.aws/credentials for local Bedrock testing
+# Build production Lambda package
+npm run build
+npm run package:lambda
+
+# Verify package
+ls -lh lambda.zip
 ```
 
----
+### 6.2 Deploy Compute Stack
 
-CD Pipeline (via CDK)/CD Pipeline (via CDK)
+```bash
+cd infrastructure
 
-**Validation Criteria:**
-- [ ] GitHub connection created and shows "Available" status in AWS Console
-- [ ] CodeBuild project created and configured correctly
-- [ ] CodePipeline created with Source → Build stages
-- [ ] S3 bucket for artifacts exists
-- [ ] Manual test: Push commit to main branch
-- [ ] Pipeline automatically triggers within 1 minute
-- [ ] CodeBuild phase completes successfully
-- [ ] Lambda function code updated automatically
-- [ ] Test updated Lambda: `curl API_ENDPOINT/api/health`
-- [ ] CloudWatch logs show new deployment
-- [ ] Verify Lambda version incremented
-- [ ] Test rollback: Update Lambda to previous version and verify
+# Deploy Lambda + API Gateway
+cdk deploy ComputeStack
 
-### 6.1 CodeBuild Project (CDK)
+# Get API endpoint from output
+API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ComputeStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
 
-**CDK Code** (`lib/pipeline-stack.ts`):
-```typescript
-const buildProject = new codebuild.Project(this, 'BuildProject', {
-  projectName: 'grievance-portal-build',
-  source: codebuild.Source.gitHub({
-    owner: 'pisomojadogrande',
-    repo: 'grievance-portal',
-    webhook: true,
-    webhookFilters: [
-      codebuild.FilterGroup.inEventOf(codebuild.EventAction.PUSH).andBranchIs('main'),
-    ],
-  }),
-  environment: {
-    buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
-    environmentVariables: {
-      S3_BUCKET: { value: deploymentBucket.bucketName },
-      AWS_REGION: { value: this.region },
-    },
-  },
-  buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yml'),
-});
-
-deploymentBucket.grantReadWrite(buildProject);
-lambdaFunction.grantUpdate(buildProject);
+echo "API Endpoint: $API_ENDPOINT"
 ```
 
-**buildspec.yml** (create in repo root):
-```yaml
-version: 0.2
+### 6.3 Test Deployment
 
-phases:
-  install:
-    runtime-versions:
-      nodejs: 20
-  pre_build:
-    commands:
-      - echo Installing dependencies...
-      - npm ci
-  build:
-    commands:
-      - echo Build started on `date`
-      - npm run build
-      - npm run package:lambda
-  post_build:
-    commands:
-      - echo Build completed on `date`
-      - aws s3 cp lambda.zip s3://$S3_BUCKET/lambda.zip
-      - aws lambda update-function-code --function-name grievance-portal --s3-bucket $S3_BUCKET --s3-key lambda.zip
+```bash
+# Test health check
+curl $API_ENDPOINT/api/health
 
-artifacts:
-  files:
-    - lambda.zip
+# Should return: {"status":"healthy","timestamp":"..."}
+
+# Check Lambda logs
+aws logs tail /aws/lambda/grievance-portal --follow
 ```
 
-```yaml
-version: 0.2
-
-phases:
-  pre_build:
-    commands:
-      - echo Logging in to Amazon ECR...
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
-      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-      - IMAGE_TAG=${COMMIT_HASH:=latest}
-  build:
-    commands:
-      - echo Build started on `date`
-      - docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
-      - docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-      - docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-  post_build:
-    commands:
-      - echo Build completed on `date`
-      - docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-      - docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-      - printf '[{"name":"grievance-portal","imageUri":"%s"}]' $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG > imagedefinitions.json
-
-artifacts:
-  files: imagedefinitions.json
-```
-
-artifacts:
-  files: imagedefinitions.json
-```
-
-### 6.2 CodePipeline (CDK)
-
-**CDK Code:**
-```typescript
-const sourceOutput = new codepipeline.Artifact();
-const buildOutput = new codepipeline.Artifact();
-
-const pipeline = new codepipeline.Pipeline(this, 'Pipeline', {
-  pipelineName: 'grievance-portal-pipeline',
-  stages: [
-    {
-      stageName: 'Source',
-      actions: [
-        new codepipeline_actions.CodeStarConnectionsSourceAction({
-          actionName: 'GitHub_Source',
-          owner: 'pisomojadogrande',
-          repo: 'grievance-portal',
-          branch: 'main',
-          connectionArn: githubConnection.attrConnectionArn,
-          output: sourceOutput,
-        }),
-      ],
-    },
-    {
-      stageName: 'Build',
-      actions: [
-        new codepipeline_actions.CodeBuildAction({
-          actionName: 'Docker_Build',
-          project: buildProject,
-          input: sourceOutput,
-          outputs: [buildOutput],
-        }),
-      ],
-    },
-    {
-      stageName: 'Deploy',
-      actions: [
-        new codepipeline_actions.EcsDeployAction({
-          actionName: 'ECS_Deploy',
-          service: ecsService,
-          input: buildOutput,
-        }),
-      ],
-    },
-  ],
-});
-```
-
-**Cost**: Free tier covers first pipeline, then $1/month per pipeline
-
-### 6.3 GitHub Connection (CDK)
-
-**CDK Code:**
-```typescript
-const githubConnection = new codestarconnections.CfnConnection(this, 'GitHubConnection', {
-  connectionName: 'grievance-portal-github',
-  providerType: 'GitHub',
-});
-
-// Note: Connection must be manually activated in AWS Console after creation
-new cdk.CfnOutput(this, 'GitHubConnectionArn', {
-  value: githubConnection.attrConnectionArn,
-  description: 'Activate this connection in AWS Console',
-});
-```
-
-**Manual step required:**
-1. After CDK deploy, go to AWS Console → Developer Tools → Connections
-2. Find the connection and click "Update pending connection"
-3. Authorize AWS to access your GitHub repository
+**Estimated Time:** 2-3 hours
 
 ---
 
@@ -1117,76 +897,82 @@ aws logs tail /aws/lambda/grievance-portal --follow
 **Goal:** Automate deployments from GitHub to AWS Lambda
 
 **Validation Criteria:**
-- [ ] CloudWatch log groups exist: `/aws/lambda/grievance-portal`, `/aws/codebuild/grievance-portal-build`
-- [ ] Lambda logs appear in real-time: `aws logs tail /aws/lambda/grievance-portal --follow`
-- [ ] Log retention set correctly (1 week)
-- [ ] CloudWatch alarms created and in "OK" state
-- [ ] Test alarm: Trigger high CPU/error condition and verify alarm fires
-- [ ] SNS topic created for alarm notifications (if configured)
-- [ ] Test notification: Manually trigger alarm and verify email received
-- [ ] CloudWatch Insights queries work: Run sample query on Lambda logs
-- [ ] Metrics dashboard shows Lambda invocations, duration, errors
-- [ ] DSQL DPU usage visible in CloudWatch metrics
-- [ ] API Gateway metrics visible (request count, latency, errors)
+- [ ] GitHub connection created and shows "Available" status in AWS Console
+- [ ] CodeBuild project created and configured correctly
+- [ ] CodePipeline created with Source → Build stages
+- [ ] S3 bucket for artifacts exists
+- [ ] Manual test: Push commit to main branch
+- [ ] Pipeline automatically triggers within 1 minute
+- [ ] CodeBuild phase completes successfully
+- [ ] Lambda function code updated automatically
+- [ ] Test updated Lambda: `curl API_ENDPOINT/api/health`
+- [ ] CloudWatch logs show new deployment
+- [ ] Verify Lambda version incremented
 
-### 8.1 CloudWatch Logs (CDK)
+### 9.1 Create buildspec.yml
 
-**Configured automatically in task definition:**
-```typescript
-logging: ecs.LogDrivers.awsLogs({
-  streamPrefix: 'grievance-portal',
-  logRetention: logs.RetentionDays.ONE_WEEK,
-})
+Create `buildspec.yml` in repository root:
+
+```yaml
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  pre_build:
+    commands:
+      - echo Installing dependencies...
+      - npm ci
+  build:
+    commands:
+      - echo Build started on `date`
+      - npm run build
+      - npm run package:lambda
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - aws s3 cp lambda.zip s3://$S3_BUCKET/lambda.zip
+      - aws lambda update-function-code --function-name grievance-portal --s3-bucket $S3_BUCKET --s3-key lambda.zip
+
+artifacts:
+  files:
+    - lambda.zip
 ```
 
-**Log groups:**
-- `/ecs/grievance-portal` - Application logs
-- `/aws/codebuild/grievance-portal` - Build logs
+### 9.2 Deploy Pipeline Stack
 
-### 8.2 CloudWatch Alarms (CDK)
+```bash
+cd infrastructure
 
-**CDK Code:**
-```typescript
-// ECS CPU alarm
-new cloudwatch.Alarm(this, 'EcsCpuAlarm', {
-  metric: service.metricCpuUtilization(),
-  threshold: 80,
-  evaluationPeriods: 2,
-  alarmDescription: 'ECS CPU > 80%',
-});
+# Deploy CI/CD pipeline
+cdk deploy PipelineStack
 
-// ALB 5xx errors
-new cloudwatch.Alarm(this, 'Alb5xxAlarm', {
-  metric: alb.metricHttpCodeTarget(elbv2.HttpCodeTarget.TARGET_5XX_COUNT),
-  threshold: 10,
-  evaluationPeriods: 1,
-  alarmDescription: 'ALB 5xx errors > 10',
-});
-
-// DSQL DPU usage (for cost monitoring)
-new cloudwatch.Alarm(this, 'DsqlDpuAlarm', {
-  metric: new cloudwatch.Metric({
-    namespace: 'AWS/DSQL',
-    metricName: 'TotalDPU',
-    statistic: 'Sum',
-    period: cdk.Duration.hours(1),
-  }),
-  threshold: 50000, // Alert if approaching free tier limit
-  evaluationPeriods: 1,
-  alarmDescription: 'DSQL DPU usage high',
-});
+# Note the GitHub connection ARN from output
 ```
 
-**Actions**: SNS topic → Email notification (configure in CDK)
+### 9.3 Activate GitHub Connection
 
-### 8.3 Application Monitoring
+1. Go to AWS Console → Developer Tools → Connections
+2. Find the connection "grievance-portal-github"
+3. Click "Update pending connection"
+4. Authorize AWS to access your GitHub repository
 
-**Add health check endpoint** (`server/routes.ts`):
-```typescript
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
+### 9.4 Test Pipeline
+
+```bash
+# Make a small change and push to main
+git commit --allow-empty -m "Test CI/CD pipeline"
+git push origin main
+
+# Watch pipeline in AWS Console or CLI
+aws codepipeline get-pipeline-state --name grievance-portal-pipeline
+
+# Verify Lambda updated
+aws lambda get-function --function-name grievance-portal --query 'Configuration.LastModified'
 ```
+
+**Estimated Time:** 2-3 hours
 
 ---
 
@@ -1200,109 +986,95 @@ app.get('/api/health', (req, res) => {
 - [ ] Log retention set correctly (1 week)
 - [ ] CloudWatch alarms created and in "OK" state
 - [ ] Test alarm: Trigger condition and verify alarm fires
-- [ ] SNS notifications work (if configured)
 - [ ] Lambda IAM role has minimum required permissions
-- [ ] API Gateway throttling configured
+- [ ] API Gateway throttling configured (100 req/sec rate, 200 burst)
 - [ ] Test throttling: Burst requests return 429
 - [ ] HTTPS enforced on API Gateway
 - [ ] No secrets in CloudWatch logs
 - [ ] Unauthenticated requests to protected endpoints return 401
 
-**Validation Criteria:**
-- [ ] Lambda IAM role has minimum required permissions (principle of least privilege)
-- [ ] Test IAM permissions: Lambda can access SSM, DSQL, Bedrock
-- [ ] Test IAM restrictions: Lambda cannot access unrelated services
-- [ ] All secrets stored in SSM Parameter Store (SecureString type)
-- [ ] No secrets in environment variables or code
-- [ ] API Gateway has throttling configured (100 req/sec rate, 200 burst)
-- [ ] Test throttling: Send burst of requests and verify 429 responses
-- [ ] HTTPS enforced on API Gateway (no HTTP access)
-- [ ] Test security: `curl http://API_ENDPOINT` should fail or redirect
-- [ ] CloudWatch logs don't contain sensitive data (passwords, keys)
-- [ ] Review IAM policy simulator for Lambda role
-- [ ] Verify Cognito user pool has secure password policy
-- [ ] Test authentication: Unauthenticated requests to protected endpoints return 401
+### 10.1 CloudWatch Monitoring
 
-### 9.1 IAM Roles (CDK)
+**Configure alarms in CDK:**
 
-**ECS Task Role:**
 ```typescript
-const taskRole = new iam.Role(this, 'TaskRole', {
-  assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-  managedPolicies: [
-    iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy'),
-  ],
+// Lambda error alarm
+new cloudwatch.Alarm(this, 'LambdaErrorAlarm', {
+  metric: lambdaFunction.metricErrors(),
+  threshold: 5,
+  evaluationPeriods: 1,
+  alarmDescription: 'Lambda errors > 5',
 });
 
-// Secrets Manager access
-dbSecret.grantRead(taskRole);
-stripeSecret.grantRead(taskRole);
-sessionSecret.grantRead(taskRole);
+// Lambda duration alarm
+new cloudwatch.Alarm(this, 'LambdaDurationAlarm', {
+  metric: lambdaFunction.metricDuration(),
+  threshold: 10000, // 10 seconds
+  evaluationPeriods: 2,
+  alarmDescription: 'Lambda duration > 10s',
+});
 
-// Bedrock access
-taskRole.addToPolicy(new iam.PolicyStatement({
-  actions: ['bedrock:InvokeModel'],
-  resources: ['*'], // Or specific model ARNs
+// DSQL DPU usage alarm
+new cloudwatch.Alarm(this, 'DsqlDpuAlarm', {
+  metric: new cloudwatch.Metric({
+    namespace: 'AWS/DSQL',
+    metricName: 'TotalDPU',
+    statistic: 'Sum',
+    period: cdk.Duration.hours(1),
+  }),
+  threshold: 50000,
+  evaluationPeriods: 1,
+  alarmDescription: 'DSQL DPU approaching free tier limit',
+});
+```
+
+### 10.2 Security Hardening
+
+**Lambda IAM role (configured in ComputeStack):**
+
+```typescript
+// Grant only required permissions
+lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
+  actions: ['ssm:GetParameter', 'ssm:GetParametersByPath'],
+  resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/grievance-portal/*`],
 }));
+
+lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
+  actions: ['bedrock:InvokeModel'],
+  resources: ['*'],
+}));
+
+// DSQL access (no VPC needed - Lambda uses AWS-managed VPC)
 ```
 
-**ECS Execution Role:**
+**API Gateway throttling:**
+
 ```typescript
-const executionRole = new iam.Role(this, 'ExecutionRole', {
-  assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-  managedPolicies: [
-    iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
-  ],
-});
-
-ecrRepository.grantPull(executionRole);
-```
-
-### 9.2 Security Groups (CDK)
-
-**Configured in NetworkStack:**
-```typescript
-// ALB Security Group
-const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
-  vpc,
-  description: 'ALB security group',
-  allowAllOutbound: true,
-});
-albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
-albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
-
-// ECS Security Group
-const ecsSg = new ec2.SecurityGroup(this, 'EcsSg', {
-  vpc,
-  description: 'ECS tasks security group',
-});
-ecsSg.addIngressRule(albSg, ec2.Port.tcp(3000));
-
-// DSQL Security Group
-const dsqlSg = new ec2.SecurityGroup(this, 'DsqlSg', {
-  vpc,
-  description: 'Aurora DSQL security group',
-});
-dsqlSg.addIngressRule(ecsSg, ec2.Port.tcp(5432));
-```
-
-### 9.3 Secrets Rotation
-
-**Enable automatic rotation (CDK):**
-```typescript
-const dbSecret = new secretsmanager.Secret(this, 'DbSecret', {
-  secretName: 'grievance-portal/database',
-  generateSecretString: {
-    secretStringTemplate: JSON.stringify({ username: 'admin' }),
-    generateStringKey: 'password',
+const api = new apigateway.RestApi(this, 'Api', {
+  deployOptions: {
+    throttlingRateLimit: 100,
+    throttlingBurstLimit: 200,
   },
 });
-
-// Enable rotation (requires Lambda function)
-dbSecret.addRotationSchedule('RotationSchedule', {
-  automaticallyAfter: cdk.Duration.days(30),
-});
 ```
+
+### 10.3 Test Security
+
+```bash
+# Test Lambda IAM permissions
+aws lambda invoke --function-name grievance-portal output.json
+
+# Test API Gateway throttling (requires load testing tool)
+ab -n 300 -c 50 $API_ENDPOINT/api/health
+
+# Verify HTTPS enforcement
+curl -I http://$API_ENDPOINT  # Should redirect or fail
+
+# Check logs for secrets
+aws logs tail /aws/lambda/grievance-portal | grep -i "password\|secret\|key"
+```
+
+**Estimated Time:** 2-3 hours
 
 ---
 
