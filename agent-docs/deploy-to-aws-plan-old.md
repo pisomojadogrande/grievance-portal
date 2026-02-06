@@ -46,15 +46,36 @@ Supporting Services:
 
 ---
 
-## Phase 1: AWS Infrastructure Setup
+## EXECUTION ORDER
+
+**Phases must be completed in this order for verifiable progress:**
+
+1. **Phase 1: Pre-Deployment Setup** - AWS account, CDK bootstrap, prerequisites
+2. **Phase 2: CDK Project Structure** - Create infrastructure code framework
+3. **Phase 3: Application Refactoring** - Make code AWS-compatible (can overlap with Phase 2)
+4. **Phase 4: Lambda Build & Local Testing** - Verify code works before deploying
+5. **Phase 5: Deploy Core Infrastructure** - DSQL, SSM, Cognito via CDK
+6. **Phase 6: Deploy Lambda + API Gateway** - Deploy application via CDK
+7. **Phase 7: Database Migration** - Migrate schema and data
+8. **Phase 8: End-to-End Testing** - Verify full application works
+9. **Phase 9: CI/CD Pipeline** - Automate deployments
+10. **Phase 10: Monitoring & Security** - Production hardening
+11. **Phase 11: Cost Optimization** - Verify costs and set budgets
+12. **Phase 12: Documentation & Rollback** - Finalize procedures
+
+---
+
+## Phase 1: Pre-Deployment Setup
 
 **Validation Criteria:**
-- [ ] Aurora DSQL cluster status shows "ACTIVE" in AWS Console
-- [ ] Can connect to DSQL using psql with connection string
-- [ ] All SSM parameters exist and can be retrieved: `aws ssm get-parameters-by-path --path /grievance-portal/ --recursive`
-- [ ] Cognito user pool created with correct configuration
-- [ ] S3 bucket for Lambda deployments exists and is accessible
-- [ ] Test parameter retrieval: `aws ssm get-parameter --name /grievance-portal/session/secret --with-decryption`
+- [ ] AWS account accessible: `aws sts get-caller-identity` returns account info
+- [ ] AWS region selected and configured: `echo $AWS_REGION` or check `~/.aws/config`
+- [ ] CDK installed: `cdk --version` shows version
+- [ ] CDK bootstrapped: `aws cloudformation describe-stacks --stack-name CDKToolkit` succeeds
+- [ ] Node.js 20+ installed: `node --version` shows v20+
+- [ ] SAM CLI installed: `sam --version` shows version
+- [ ] Current Replit database backed up: `backup.sql` file exists
+- [ ] Stripe webhook endpoint documented (will update after deployment)
 
 ### 1.1 No VPC Required! 🎉
 
