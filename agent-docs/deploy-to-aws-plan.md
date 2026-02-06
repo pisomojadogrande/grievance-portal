@@ -65,98 +65,104 @@ Supporting Services:
 
 ---
 
+## EXECUTION ORDER
+
+Phases must be completed in this order for verifiable progress:
+
+1. **Phase 1: Pre-Deployment Setup** - AWS account, tools, prerequisites
+2. **Phase 2: CDK Project Structure** - Create infrastructure code framework  
+3. **Phase 3: Application Refactoring** - Make code AWS-compatible (can overlap with Phase 2)
+4. **Phase 4: Lambda Build & Local Testing** - Verify code works before deploying
+5. **Phase 5: Deploy Core Infrastructure** - DSQL, SSM, Cognito via CDK
+6. **Phase 6: Deploy Lambda + API Gateway** - Deploy application via CDK
+7. **Phase 7: Database Migration** - Migrate schema and data
+8. **Phase 8: End-to-End Testing** - Verify full application works
+9. **Phase 9: CI/CD Pipeline** - Automate deployments
+10. **Phase 10: Monitoring & Security** - Production hardening
+11. **Phase 11: Cost Optimization** - Verify costs and set budgets
+12. **Phase 12: Documentation & Rollback** - Finalize procedures
+
+---
+
 ## Phase 1: Pre-Deployment Setup
+
+**Goal:** Prepare local environment and AWS account for deployment
 
 **Validation Criteria:**
 - [ ] AWS account accessible: `aws sts get-caller-identity` returns account info
-- [ ] AWS region selected and configured: `echo $AWS_REGION` or check `~/.aws/config`
-- [ ] CDK installed: `cdk --version` shows version
+- [ ] AWS region selected (recommend us-east-1 for Bedrock/DSQL availability)
+- [ ] CDK installed: `cdk --version` shows version ≥2.0
 - [ ] CDK bootstrapped: `aws cloudformation describe-stacks --stack-name CDKToolkit` succeeds
 - [ ] Node.js 20+ installed: `node --version` shows v20+
 - [ ] SAM CLI installed: `sam --version` shows version
 - [ ] Current Replit database backed up: `backup.sql` file exists
-- [ ] Stripe webhook endpoint documented (will update after deployment)
+- [ ] Current admin users documented
 
-### 1.1 No VPC Required! 🎉
+**Tasks:**
 
-**Lambda runs in AWS-managed VPC by default:**
-- No VPC setup needed
-- No NAT Gateway needed
-- No subnet configuration
-- Lambda can access DSQL, Bedrock, SSM Parameter Store directly
+### 1.1 Install Required Tools
 
-**Cost savings: $32/month (NAT Gateway eliminated)**
+```bash
+# AWS CLI (if not installed)
+# Follow: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 
-### 1.2 Aurora DSQL Cluster
+# AWS CDK
+npm install -g aws-cdk
 
-**Configuration:**
-- Engine: PostgreSQL-compatible (wire protocol v3)
-- Serverless distributed SQL database
-- Scales to zero when idle (no charges)
-- Multi-AZ by default (3 AZs within region)
-- Single-region cluster (can add multi-region later if needed)
+# SAM CLI
+brew install aws-sam-cli  # macOS
+# or follow: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
 
-**Important DSQL Constraints:**
-- No foreign key constraints (enforce in application layer)
-- No temporary tables (use CTEs or regular tables)
-- DDL and DML must be in separate transactions
-- 10,000 row limit per transaction
-- No auto-increment sequences (use UUIDs or application-generated IDs)
+# Verify installations
+aws --version
+cdk --version
+sam --version
+node --version
+```
 
-**Cost**: 
-- Free tier: 100K DPUs + 1GB storage/month
-- Beyond free tier: $8/million DPUs + $0.33/GB-month
-- **Estimated: $0-10/month at low volume** (vs $43/month for Aurora Serverless v2)
-- Scales to zero when idle = no charges during downtime
+### 1.2 Configure AWS Credentials
 
-**CDK Resource**: `CfnCluster` from `@aws-cdk/aws-dsql-alpha` (L1 construct)
+```bash
+# Configure AWS CLI with your credentials
+aws configure
 
-### 1.3 SSM Parameter Store (Replaces Secrets Manager)
+# Verify access
+aws sts get-caller-identity
 
-**Parameters to store:**
-- `/grievance-portal/stripe/secret-key` - Stripe secret key
-- `/grievance-portal/stripe/publishable-key` - Stripe publishable key
-- `/grievance-portal/stripe/webhook-secret` - Stripe webhook secret
-- `/grievance-portal/database/url` - Aurora DSQL connection string
-- `/grievance-portal/session/secret` - Express session secret
-- `/grievance-portal/cognito/user-pool-id` - Cognito user pool ID
-- `/grievance-portal/cognito/client-id` - Cognito client ID
+# Choose region (us-east-1 recommended for Bedrock/DSQL)
+export AWS_REGION=us-east-1
+```
 
-**Cost**: **FREE** for standard parameters (up to 10,000)
+### 1.3 Bootstrap CDK
 
-**CDK Resource**: `StringParameter` from `aws-cdk-lib/aws-ssm`
+```bash
+# Bootstrap CDK in your account/region (one-time setup)
+cdk bootstrap aws://ACCOUNT-ID/us-east-1
 
-**Comparison to Secrets Manager:**
-- Secrets Manager: $0.40/secret/month = $2.80/month for 7 secrets
-- SSM Parameter Store: $0/month
-- **Savings: $2.80/month**
+# Verify bootstrap
+aws cloudformation describe-stacks --stack-name CDKToolkit
+```
 
-**Trade-off:** No automatic rotation (manual rotation via Lambda if needed)
+### 1.4 Export Replit Database
 
-### 1.4 Cognito User Pool
+```bash
+# Export current database
+pg_dump $REPLIT_DB_URL > backup.sql
 
-**Configuration:**
-- User pool for admin authentication
-- Email/password authentication
-- MFA optional (can enable later)
-- Custom attributes if needed
-- App client for the web application
+# Verify export
+ls -lh backup.sql
 
-**Cost**: Free tier covers 50,000 MAUs (Monthly Active Users)
+# Document current admin users
+psql $REPLIT_DB_URL -c "SELECT * FROM users WHERE role = 'admin';" > admin-users.txt
+```
 
-**CDK Resource**: `UserPool` from `aws-cdk-lib/aws-cognito`
-
-### 1.5 S3 Bucket for Lambda Deployment
-
-**Purpose**: Store Lambda deployment packages (zip files)
-
-**Cost**: Negligible (<1 GB storage)
-
-**CDK Resource**: `Bucket` from `aws-cdk-lib/aws-s3`
+**Estimated Time:** 30-60 minutes
 
 ---
 
-## Phase 2: Infrastructure as Code with AWS CDK
+## Phase 2: CDK Project Structure
+
+**Goal:** Create infrastructure-as-code framework (can work in parallel with Phase 3)
 
 **Validation Criteria:**
 - [ ] CDK project initializes successfully: `cdk synth` runs without errors
@@ -164,7 +170,6 @@ Supporting Services:
 - [ ] CloudFormation templates generated in `cdk.out/` directory
 - [ ] Stack dependencies correctly defined (no circular dependencies)
 - [ ] `cdk diff` shows expected resources to be created
-- [ ] Dry-run deployment succeeds: `cdk deploy --all --dry-run`
 
 ### 2.1 CDK Project Structure
 
@@ -247,9 +252,13 @@ cdk deploy ComputeStack
 cdk destroy --all
 ```
 
+**Estimated Time:** 1-2 hours
+
 ---
 
 ## Phase 3: Application Refactoring
+
+**Goal:** Make application code AWS-compatible (can work in parallel with Phase 2)
 
 **Validation Criteria:**
 - [ ] Application builds successfully: `npm run build` completes without errors
@@ -257,11 +266,9 @@ cdk destroy --all
 - [ ] Express app exports for Lambda: `server/index.ts` has `export default app`
 - [ ] All Replit dependencies removed from package.json
 - [ ] Schema compiles without foreign key references
-- [ ] SSM parameter loading function works locally (with AWS credentials)
+- [ ] SSM parameter loading function compiles
 - [ ] Cognito integration code compiles
 - [ ] Bedrock client code compiles
-- [ ] Local testing with SAM CLI: `sam local start-api` runs successfully
-- [ ] Health check endpoint responds: `curl http://localhost:3000/api/health`
 
 ### 3.1 Lambda Adapter for Express App
 
@@ -464,7 +471,9 @@ NODE_ENV=production
 
 ---
 
-## Phase 4: Lambda Deployment Package
+## Phase 4: Lambda Build & Local Testing
+
+**Goal:** Verify application works locally before deploying to AWS
 
 **Validation Criteria:**
 - [ ] Build script completes: `npm run build` succeeds
@@ -526,11 +535,144 @@ sam local start-api
 curl http://localhost:3000/api/health
 ```
 
+**Estimated Time:** 2-3 hours
+
 ---
 
-## Phase 5: Lambda + API Gateway Setup (via CDK)
+## Phase 5: Deploy Core Infrastructure
+
+**Goal:** Deploy DSQL, SSM Parameter Store, and Cognito via CDK
 
 **Validation Criteria:**
+- [ ] CDK deployment succeeds: `cdk deploy ParametersStack DatabaseStack AuthStack` completes
+- [ ] DSQL cluster active: `aws dsql get-cluster --identifier grievance-portal-dsql` shows "ACTIVE"
+- [ ] Can connect to DSQL: `psql $DSQL_URL -c "SELECT version();"`
+- [ ] SSM parameters exist: `aws ssm get-parameters-by-path --path /grievance-portal/ --recursive` shows all params
+- [ ] SSM parameters retrievable with decryption
+- [ ] Cognito user pool exists and is configured correctly
+- [ ] Cognito admin user created
+
+### 5.1 Aurora DSQL Overview
+
+**Configuration:**
+- Engine: PostgreSQL-compatible (wire protocol v3)
+- Serverless distributed SQL database
+- Scales to zero when idle (no charges)
+- Multi-AZ by default (3 AZs within region)
+
+**Important DSQL Constraints:**
+- No foreign key constraints (enforce in application layer)
+- No temporary tables (use CTEs or regular tables)
+- DDL and DML must be in separate transactions
+- 10,000 row limit per transaction
+- No auto-increment sequences (use UUIDs)
+
+**Cost**: 
+- Free tier: 100K DPUs + 1GB storage/month
+- Beyond free tier: $8/million DPUs + $0.33/GB-month
+- **Estimated: $0-10/month at low volume**
+- Scales to zero when idle = no charges during downtime
+
+### 5.2 SSM Parameter Store Overview
+
+**Parameters to create:**
+- `/grievance-portal/stripe/secret-key` - Stripe secret key (SecureString)
+- `/grievance-portal/stripe/publishable-key` - Stripe publishable key
+- `/grievance-portal/stripe/webhook-secret` - Stripe webhook secret (SecureString)
+- `/grievance-portal/database/url` - Aurora DSQL connection string (SecureString)
+- `/grievance-portal/session/secret` - Express session secret (SecureString)
+- `/grievance-portal/cognito/user-pool-id` - Cognito user pool ID
+- `/grievance-portal/cognito/client-id` - Cognito client ID
+
+**Cost**: **FREE** for standard parameters (up to 10,000)
+
+### 5.3 Deploy Infrastructure Stacks
+
+```bash
+cd infrastructure
+
+# Deploy parameters stack (with placeholder values)
+cdk deploy ParametersStack
+
+# Deploy database stack
+cdk deploy DatabaseStack
+
+# Deploy auth stack
+cdk deploy AuthStack
+
+# Verify all deployed
+aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE
+```
+
+### 5.4 Update SSM Parameters with Real Values
+
+```bash
+# Update Stripe keys (use your test keys)
+aws ssm put-parameter --name /grievance-portal/stripe/secret-key \
+  --value "sk_test_..." --type SecureString --overwrite
+
+aws ssm put-parameter --name /grievance-portal/stripe/publishable-key \
+  --value "pk_test_..." --overwrite
+
+aws ssm put-parameter --name /grievance-portal/stripe/webhook-secret \
+  --value "whsec_..." --type SecureString --overwrite
+
+# Generate and store session secret
+aws ssm put-parameter --name /grievance-portal/session/secret \
+  --value "$(openssl rand -base64 32)" --type SecureString --overwrite
+
+# Get DSQL connection string from stack output and store
+DSQL_URL=$(aws cloudformation describe-stacks --stack-name DatabaseStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`DsqlConnectionString`].OutputValue' --output text)
+aws ssm put-parameter --name /grievance-portal/database/url \
+  --value "$DSQL_URL" --type SecureString --overwrite
+
+# Cognito IDs will be stored automatically by CDK
+```
+
+### 5.5 Create Cognito Admin User
+
+```bash
+# Get user pool ID
+USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name AuthStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' --output text)
+
+# Create admin user
+aws cognito-idp admin-create-user \
+  --user-pool-id $USER_POOL_ID \
+  --username admin@example.com \
+  --user-attributes Name=email,Value=admin@example.com Name=email_verified,Value=true \
+  --temporary-password "TempPassword123!" \
+  --message-action SUPPRESS
+
+# Set permanent password
+aws cognito-idp admin-set-user-password \
+  --user-pool-id $USER_POOL_ID \
+  --username admin@example.com \
+  --password "YourSecurePassword123!" \
+  --permanent
+```
+
+### 5.6 Test Infrastructure
+
+```bash
+# Test DSQL connection
+psql $DSQL_URL -c "SELECT version();"
+
+# Test SSM parameter retrieval
+aws ssm get-parameter --name /grievance-portal/session/secret --with-decryption
+
+# Test Cognito user pool
+aws cognito-idp list-users --user-pool-id $USER_POOL_ID
+```
+
+**Estimated Time:** 2-3 hours
+
+---
+
+## Phase 6: Deploy Lambda + API Gateway
+
+**Goal:** Deploy application to AWS via CDK
 - [ ] CDK deployment succeeds: `cdk deploy ComputeStack` completes
 - [ ] Lambda function appears in AWS Console
 - [ ] Lambda function has correct IAM permissions (SSM, Bedrock, DSQL)
@@ -624,132 +766,7 @@ AWS_REGION=us-east-1
 
 ---
 
-## Phase 5: ECS Fargate Setup (via CDK)
-
-### 5.1 ECS Cluster (CDK)
-
-**CDK Code** (`lib/compute-stack.ts`):
-```typescript
-const cluster = new ecs.Cluster(this, 'GrievancePortalCluster', {
-  vpc,
-  clusterName: 'grievance-portal-cluster',
-  containerInsights: true,
-});
-```
-
-### 5.2 Task Definition (CDK)
-
-**CDK Code:**
-```typescript
-const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-  cpu: 256,
-  memoryLimitMiB: 512,
-  taskRole: taskRole,
-  executionRole: executionRole,
-});
-
-const container = taskDefinition.addContainer('app', {
-  image: ecs.ContainerImage.fromEcrRepository(ecrRepository, 'latest'),
-  logging: ecs.LogDrivers.awsLogs({
-    streamPrefix: 'grievance-portal',
-    logRetention: logs.RetentionDays.ONE_WEEK,
-  }),
-  environment: {
-    AWS_REGION: this.region,
-    NODE_ENV: 'production',
-    PORT: '3000',
-  },
-  secrets: {
-    DATABASE_URL: ecs.Secret.fromSecretsManager(dbSecret),
-    STRIPE_SECRET_KEY: ecs.Secret.fromSecretsManager(stripeSecret, 'secret_key'),
-    STRIPE_PUBLISHABLE_KEY: ecs.Secret.fromSecretsManager(stripeSecret, 'publishable_key'),
-    SESSION_SECRET: ecs.Secret.fromSecretsManager(sessionSecret),
-    COGNITO_USER_POOL_ID: ecs.Secret.fromSecretsManager(cognitoSecret, 'user_pool_id'),
-    COGNITO_CLIENT_ID: ecs.Secret.fromSecretsManager(cognitoSecret, 'client_id'),
-  },
-});
-
-container.addPortMappings({ containerPort: 3000 });
-```
-
-### 5.3 ECS Service (CDK)
-
-**CDK Code:**
-```typescript
-const service = new ecs.FargateService(this, 'Service', {
-  cluster,
-  taskDefinition,
-  desiredCount: 1,
-  minHealthyPercent: 0, // Allow stopping old task before starting new one (cost optimization)
-  maxHealthyPercent: 200,
-  healthCheckGracePeriod: cdk.Duration.seconds(60),
-  circuitBreaker: { rollback: true },
-});
-
-// Auto-scaling
-const scaling = service.autoScaleTaskCount({
-  minCapacity: 1,
-  maxCapacity: 3,
-});
-
-scaling.scaleOnCpuUtilization('CpuScaling', {
-  targetUtilizationPercent: 70,
-  scaleInCooldown: cdk.Duration.seconds(60),
-  scaleOutCooldown: cdk.Duration.seconds(60),
-});
-```
-
-**Cost**: ~$15/month (1 task * 0.25 vCPU * $0.04048/hour * 730 hours)
-
-### 5.4 Application Load Balancer (CDK)
-
-**CDK Code:**
-```typescript
-const alb = new elbv2.ApplicationLoadBalancer(this, 'ALB', {
-  vpc,
-  internetFacing: true,
-  loadBalancerName: 'grievance-portal-alb',
-});
-
-const targetGroup = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
-  vpc,
-  port: 3000,
-  protocol: elbv2.ApplicationProtocol.HTTP,
-  targetType: elbv2.TargetType.IP,
-  healthCheck: {
-    path: '/api/health',
-    interval: cdk.Duration.seconds(30),
-    timeout: cdk.Duration.seconds(5),
-    healthyThresholdCount: 2,
-    unhealthyThresholdCount: 3,
-  },
-});
-
-service.attachToApplicationTargetGroup(targetGroup);
-
-// HTTP listener (redirect to HTTPS)
-alb.addListener('HttpListener', {
-  port: 80,
-  defaultAction: elbv2.ListenerAction.redirect({
-    protocol: 'HTTPS',
-    port: '443',
-    permanent: true,
-  }),
-});
-
-// HTTPS listener
-const httpsListener = alb.addListener('HttpsListener', {
-  port: 443,
-  certificates: [certificate], // From ACM
-  defaultAction: elbv2.ListenerAction.forward([targetGroup]),
-});
-```
-
-**Cost**: ~$16/month base + $0.008/LCU-hour
-
----
-
-## Phase 6: CI/CD Pipeline (via CDK)
+CD Pipeline (via CDK)/CD Pipeline (via CDK)
 
 **Validation Criteria:**
 - [ ] GitHub connection created and shows "Available" status in AWS Console
@@ -991,9 +1008,102 @@ postgresql://username:password@cluster-id.dsql.us-east-1.on.aws:5432/postgres
 
 Store in Secrets Manager, reference in ECS task definition via CDK.
 
+**Estimated Time:** 1-2 hours
+
 ---
 
-## Phase 8: Monitoring and Logging
+## Phase 8: End-to-End Testing
+
+**Goal:** Verify full application functionality in AWS
+
+**Validation Criteria:**
+- [ ] Health check returns 200: `curl API_ENDPOINT/api/health`
+- [ ] Can submit complaint through UI
+- [ ] Stripe payment completes (sandbox with test card 4242...)
+- [ ] AI response generated via Bedrock
+- [ ] Admin can login with Cognito credentials
+- [ ] Admin can view complaints in admin portal
+- [ ] Stripe webhook processes successfully
+- [ ] Load test completes: 100 concurrent requests without errors
+- [ ] All CloudWatch alarms in "OK" state
+- [ ] No errors in CloudWatch logs during testing
+
+### 8.1 Test API Endpoints
+
+```bash
+# Get API endpoint from CDK output
+API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ComputeStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
+
+# Test health check
+curl $API_ENDPOINT/api/health
+
+# Should return: {"status":"healthy","timestamp":"..."}
+```
+
+### 8.2 Test Complaint Submission Flow
+
+1. Open application in browser: `$API_ENDPOINT`
+2. Fill out complaint form
+3. Submit with Stripe test card: `4242 4242 4242 4242`
+4. Verify payment processes
+5. Verify AI response is generated
+6. Check CloudWatch logs for any errors
+
+### 8.3 Test Admin Authentication
+
+1. Navigate to admin portal: `$API_ENDPOINT/admin`
+2. Login with Cognito credentials created in Phase 5
+3. Verify can view submitted complaints
+4. Verify can see AI responses
+
+### 8.4 Test Stripe Webhook
+
+```bash
+# Update Stripe webhook URL in Stripe Dashboard
+# URL: $API_ENDPOINT/api/stripe/webhook
+
+# Test webhook with Stripe CLI
+stripe listen --forward-to $API_ENDPOINT/api/stripe/webhook
+
+# Trigger test event
+stripe trigger payment_intent.succeeded
+```
+
+### 8.5 Load Testing
+
+```bash
+# Install Apache Bench (if not installed)
+# macOS: brew install httpd
+# Linux: apt-get install apache2-utils
+
+# Run load test (100 requests, 10 concurrent)
+ab -n 100 -c 10 $API_ENDPOINT/api/health
+
+# Check results:
+# - All requests should succeed (200 OK)
+# - No failed requests
+# - Reasonable response times (<1s for warm Lambda)
+```
+
+### 8.6 Review CloudWatch Logs
+
+```bash
+# Tail Lambda logs
+aws logs tail /aws/lambda/grievance-portal --follow
+
+# Look for:
+# - No ERROR level logs
+# - Successful database connections
+# - Successful Bedrock API calls
+# - Successful SSM parameter retrievals
+```
+
+**Estimated Time:** 2-3 hours
+
+---
+
+## Phase 9: CI/CD Pipeline
 
 **Validation Criteria:**
 - [ ] CloudWatch log groups exist: `/aws/lambda/grievance-portal`, `/aws/codebuild/grievance-portal-build`
