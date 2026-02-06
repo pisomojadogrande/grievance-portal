@@ -6,7 +6,7 @@
 
 All prerequisites are now in place:
 - ✅ Node.js 20.18.0 installed (via mise)
-- ✅ AWS CLI configured (Account: 123456789012, Region: us-east-1)
+- ✅ AWS CLI configured (Region: us-east-1)
 - ✅ AWS CDK 2.1105.0 installed locally
 - ✅ CDK bootstrapped in us-east-1
 - ✅ Replit database backed up (112KB in backup.sql)
@@ -126,7 +126,7 @@ Phases must be completed in this order for verifiable progress:
 **Goal:** Prepare local environment and AWS account for deployment
 
 **Validation Criteria:**
-- [x] AWS account accessible: `aws sts get-caller-identity` returns account info → **123456789012**
+- [x] AWS account accessible: `aws sts get-caller-identity` returns account info
 - [x] AWS region selected (recommend us-east-1 for Bedrock/DSQL availability) → **us-east-1**
 - [x] CDK installed: `npx cdk --version` shows version ≥2.0 → **2.1105.0**
 - [x] CDK bootstrapped: `aws cloudformation describe-stacks --stack-name CDKToolkit` succeeds → **CREATE_COMPLETE**
