@@ -142,3 +142,7 @@ vite.config.ts.timestamp-*
 .DS_Store
 server/public
 *.tar.gz
+
+# Database backups
+backup.sql
+admin-users.txt
