@@ -91,12 +91,11 @@ Phases must be completed in this order for verifiable progress:
 **Validation Criteria:**
 - [ ] AWS account accessible: `aws sts get-caller-identity` returns account info
 - [ ] AWS region selected (recommend us-east-1 for Bedrock/DSQL availability)
-- [ ] CDK installed: `cdk --version` shows version ≥2.0
+- [ ] CDK installed: `npx cdk --version` shows version ≥2.0
 - [ ] CDK bootstrapped: `aws cloudformation describe-stacks --stack-name CDKToolkit` succeeds
 - [ ] Node.js 20+ installed: `node --version` shows v20+
-- [ ] SAM CLI installed: `sam --version` shows version
-- [ ] Current Replit database backed up: `backup.sql` file exists
-- [ ] Current admin users documented
+- [ ] Current Replit database backed up (if accessible): `backup.sql` file exists
+- [ ] Current admin users documented (if accessible)
 
 **Tasks:**
 
@@ -106,17 +105,12 @@ Phases must be completed in this order for verifiable progress:
 # AWS CLI (if not installed)
 # Follow: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 
-# AWS CDK
-npm install -g aws-cdk
-
-# SAM CLI
-brew install aws-sam-cli  # macOS
-# or follow: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
+# AWS CDK (local to project)
+npm install --save-dev aws-cdk
 
 # Verify installations
 aws --version
-cdk --version
-sam --version
+npx cdk --version
 node --version
 ```
 
@@ -137,13 +131,15 @@ export AWS_REGION=us-east-1
 
 ```bash
 # Bootstrap CDK in your account/region (one-time setup)
-cdk bootstrap aws://ACCOUNT-ID/us-east-1
+npx cdk bootstrap aws://ACCOUNT-ID/us-east-1
 
 # Verify bootstrap
 aws cloudformation describe-stacks --stack-name CDKToolkit
 ```
 
-### 1.4 Export Replit Database
+### 1.4 Export Replit Database (Optional)
+
+**If you have access to the Replit database:**
 
 ```bash
 # Export current database
@@ -155,6 +151,8 @@ ls -lh backup.sql
 # Document current admin users
 psql $REPLIT_DB_URL -c "SELECT * FROM users WHERE role = 'admin';" > admin-users.txt
 ```
+
+**If you don't have access:** We'll start with a fresh database on AWS and create admin users in Cognito during Phase 5.
 
 **Estimated Time:** 30-60 minutes
 
@@ -481,8 +479,8 @@ NODE_ENV=production
 - [ ] Package size is reasonable (<50MB uncompressed, <10MB compressed)
 - [ ] Package contains `index.js` handler
 - [ ] Package structure is correct: unzip and verify contents
-- [ ] Local Lambda test succeeds: `sam local invoke GrievancePortalFunction`
-- [ ] Test event returns expected response
+- [ ] Express app runs locally: `npm run dev` starts successfully
+- [ ] Local health check responds: `curl http://localhost:5000/api/health`
 - [ ] No unnecessary files in package (node_modules trimmed to production only)
 
 ### 4.1 Build Script
@@ -523,17 +521,18 @@ lambda.zip
 
 ### 4.3 Local Testing
 
-**Test Lambda locally with SAM CLI:**
+**Test Express app normally (no SAM CLI needed):**
 ```bash
-# Install SAM CLI
-brew install aws-sam-cli
+# Start local development server
+npm run dev
 
-# Create sam-template.yaml
-sam local start-api
+# Test endpoint in another terminal
+curl http://localhost:5000/api/health
 
-# Test endpoint
-curl http://localhost:3000/api/health
+# Should return: {"status":"healthy","timestamp":"..."}
 ```
+
+The serverless-express wrapper only activates in Lambda. Locally, your Express app runs normally. If it works locally, it will work in Lambda.
 
 **Estimated Time:** 2-3 hours
 
@@ -1646,7 +1645,7 @@ This plan provides a complete serverless path from Replit to AWS with:
 - ✅ **All infrastructure defined in AWS CDK (TypeScript)**
 - ✅ **No VPC, No NAT Gateway, No ALB needed**
 - ✅ **Automated deployments from GitHub**
-- ✅ **Local development with SAM CLI**
+- ✅ **Local development with normal Express server**
 - ✅ **Security best practices**
 - ✅ **Monitoring and logging**
 - ✅ **Easy rollback capabilities**
@@ -1675,9 +1674,8 @@ This plan provides a complete serverless path from Replit to AWS with:
 **Next Steps:**
 1. Review and approve this serverless plan
 2. Set up AWS account and choose region (us-east-1 recommended)
-3. Install AWS CDK: `npm install -g aws-cdk`
-4. Install SAM CLI: `brew install aws-sam-cli`
-5. Begin Phase 1 (CDK Infrastructure Setup)
+3. Install AWS CDK: `npm install --save-dev aws-cdk`
+4. Begin Phase 1 (Pre-Deployment Setup)
 6. Proceed through phases sequentially
 7. Test thoroughly at each phase
 
