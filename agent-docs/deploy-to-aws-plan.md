@@ -5,12 +5,13 @@
 Deploy the Replit-based Grievance Portal to AWS with production best practices while maintaining low costs at low volume. The application will be containerized and run on ECS Fargate with Aurora Serverless v2, using Cognito for authentication and Bedrock for AI capabilities.
 
 **Key Decisions:**
-- **Compute**: ECS Fargate (containerized, auto-scaling)
+- **Compute**: AWS Lambda with serverless-express wrapper (scales to zero)
+- **API**: API Gateway REST API (scales to zero, replaces ALB)
 - **Database**: Aurora DSQL (scales to zero, ~$0-10/month at low volume)
 - **Auth**: Migrate from Replit Auth to AWS Cognito
 - **AI**: Migrate from OpenAI to AWS Bedrock
+- **Secrets**: SSM Parameter Store (free for standard parameters)
 - **CI/CD**: CodePipeline + CodeBuild with GitHub integration
-- **Secrets**: AWS Secrets Manager for Stripe keys and other credentials
 - **Infrastructure**: AWS CDK (TypeScript) for all infrastructure as code
 
 ---
@@ -22,13 +23,13 @@ GitHub (main branch)
     ↓
 CodePipeline (auto-trigger)
     ↓
-CodeBuild (build Docker image)
+CodeBuild (build Lambda package)
     ↓
-ECR (store image)
+S3 (store Lambda zip)
     ↓
-ECS Fargate (run containers)
+Lambda (run Express app via serverless-express)
     ↓
-Application Load Balancer (HTTPS)
+API Gateway (HTTPS endpoints)
     ↓
 Route 53 (optional custom domain)
 
@@ -36,30 +37,26 @@ Supporting Services:
 - Aurora DSQL (PostgreSQL-compatible, scales to zero)
 - Cognito (user authentication)
 - Bedrock (AI/LLM)
-- Secrets Manager (Stripe keys, DB credentials)
+- SSM Parameter Store (secrets - free)
 - CloudWatch (logs & monitoring)
-- S3 (build artifacts, static assets if needed)
 
 **All infrastructure defined in AWS CDK (TypeScript)**
+**No VPC, No NAT Gateway, No ALB needed!**
 ```
 
 ---
 
 ## Phase 1: AWS Infrastructure Setup
 
-### 1.1 VPC and Networking
+### 1.1 No VPC Required! 🎉
 
-**Resources to create:**
-- VPC with 2 public subnets (for ALB) and 2 private subnets (for ECS/Aurora) across 2 AZs
-- Internet Gateway
-- NAT Gateway (1 for cost optimization, can add 2nd for HA later)
-- Route tables
-- Security Groups:
-  - ALB: Allow 80/443 from internet
-  - ECS: Allow traffic from ALB only
-  - Aurora: Allow 5432 from ECS only
+**Lambda runs in AWS-managed VPC by default:**
+- No VPC setup needed
+- No NAT Gateway needed
+- No subnet configuration
+- Lambda can access DSQL, Bedrock, SSM Parameter Store directly
 
-**Cost**: ~$32/month for NAT Gateway (main cost), VPC is free
+**Cost savings: $32/month (NAT Gateway eliminated)**
 
 ### 1.2 Aurora DSQL Cluster
 
@@ -85,17 +82,27 @@ Supporting Services:
 
 **CDK Resource**: `CfnCluster` from `@aws-cdk/aws-dsql-alpha` (L1 construct)
 
-### 1.3 Secrets Manager
+### 1.3 SSM Parameter Store (Replaces Secrets Manager)
 
-**Secrets to store:**
-- `grievance-portal/stripe` - Stripe publishable and secret keys
-- `grievance-portal/database` - Aurora DSQL connection string
-- `grievance-portal/session` - Express session secret
-- `grievance-portal/cognito` - Cognito app client credentials
+**Parameters to store:**
+- `/grievance-portal/stripe/secret-key` - Stripe secret key
+- `/grievance-portal/stripe/publishable-key` - Stripe publishable key
+- `/grievance-portal/stripe/webhook-secret` - Stripe webhook secret
+- `/grievance-portal/database/url` - Aurora DSQL connection string
+- `/grievance-portal/session/secret` - Express session secret
+- `/grievance-portal/cognito/user-pool-id` - Cognito user pool ID
+- `/grievance-portal/cognito/client-id` - Cognito client ID
 
-**Cost**: $0.40/secret/month = ~$1.60/month
+**Cost**: **FREE** for standard parameters (up to 10,000)
 
-**CDK Resource**: `Secret` from `aws-cdk-lib/aws-secretsmanager`
+**CDK Resource**: `StringParameter` from `aws-cdk-lib/aws-ssm`
+
+**Comparison to Secrets Manager:**
+- Secrets Manager: $0.40/secret/month = $2.80/month for 7 secrets
+- SSM Parameter Store: $0/month
+- **Savings: $2.80/month**
+
+**Trade-off:** No automatic rotation (manual rotation via Lambda if needed)
 
 ### 1.4 Cognito User Pool
 
@@ -110,13 +117,13 @@ Supporting Services:
 
 **CDK Resource**: `UserPool` from `aws-cdk-lib/aws-cognito`
 
-### 1.5 ECR (Elastic Container Registry)
+### 1.5 S3 Bucket for Lambda Deployment
 
-**Purpose**: Store Docker images for the application
+**Purpose**: Store Lambda deployment packages (zip files)
 
-**Cost**: $0.10/GB/month storage, negligible for this app
+**Cost**: Negligible (<1 GB storage)
 
-**CDK Resource**: `Repository` from `aws-cdk-lib/aws-ecr`
+**CDK Resource**: `Bucket` from `aws-cdk-lib/aws-s3`
 
 ---
 
@@ -137,11 +144,10 @@ infrastructure/
 ├── bin/
 │   └── grievance-portal.ts    # CDK app entry point
 ├── lib/
-│   ├── network-stack.ts        # VPC, subnets, security groups
 │   ├── database-stack.ts       # Aurora DSQL
-│   ├── compute-stack.ts        # ECS, Fargate, ALB
+│   ├── compute-stack.ts        # Lambda + API Gateway
 │   ├── auth-stack.ts           # Cognito
-│   ├── secrets-stack.ts        # Secrets Manager
+│   ├── parameters-stack.ts     # SSM Parameter Store
 │   └── pipeline-stack.ts       # CodePipeline, CodeBuild
 ├── cdk.json
 ├── package.json
@@ -151,29 +157,25 @@ infrastructure/
 ### 2.2 CDK Stack Dependencies
 
 **Stack order:**
-1. `NetworkStack` - VPC and networking (no dependencies)
-2. `SecretsStack` - Secrets Manager (no dependencies)
-3. `DatabaseStack` - Aurora DSQL (depends on NetworkStack)
-4. `AuthStack` - Cognito (no dependencies)
-5. `ComputeStack` - ECS/Fargate/ALB (depends on NetworkStack, DatabaseStack, AuthStack, SecretsStack)
-6. `PipelineStack` - CI/CD (depends on ComputeStack)
+1. `ParametersStack` - SSM Parameter Store (no dependencies)
+2. `DatabaseStack` - Aurora DSQL (no dependencies)
+3. `AuthStack` - Cognito (no dependencies)
+4. `ComputeStack` - Lambda + API Gateway (depends on DatabaseStack, AuthStack, ParametersStack)
+5. `PipelineStack` - CI/CD (depends on ComputeStack)
 
 ### 2.3 Key CDK Constructs
 
-**Network Stack:**
-- `ec2.Vpc` - VPC with public/private subnets
-- `ec2.SecurityGroup` - Security groups for ALB, ECS, DSQL
-- `ec2.NatGateway` - NAT gateway for private subnets
-
 **Database Stack:**
 - `CfnCluster` from `@aws-cdk/aws-dsql-alpha` - Aurora DSQL cluster
-- `secretsmanager.Secret` - Store connection string
+- `ssm.StringParameter` - Store connection string
+
+**Parameters Stack:**
+- `ssm.StringParameter` - Store all secrets/config
 
 **Compute Stack:**
-- `ecs.Cluster` - ECS cluster
-- `ecs.FargateTaskDefinition` - Task definition
-- `ecs.FargateService` - ECS service with auto-scaling
-- `elbv2.ApplicationLoadBalancer` - ALB
+- `lambda.Function` - Lambda function with Express app
+- `apigateway.RestApi` - API Gateway REST API
+- `apigateway.LambdaIntegration` - Connect API Gateway to Lambda
 - `certificatemanager.Certificate` - SSL certificate (if using custom domain)
 
 **Auth Stack:**
@@ -202,7 +204,7 @@ cdk synth
 cdk deploy --all
 
 # Deploy specific stack
-cdk deploy NetworkStack
+cdk deploy ComputeStack
 
 # Destroy all resources
 cdk destroy --all
@@ -212,7 +214,43 @@ cdk destroy --all
 
 ## Phase 3: Application Refactoring
 
-### 3.1 Remove Replit Dependencies
+### 3.1 Lambda Adapter for Express App
+
+**Install serverless-express:**
+```bash
+npm install @codegenie/serverless-express
+```
+
+**Create Lambda handler** (`server/lambda.ts`):
+```typescript
+import serverlessExpress from '@codegenie/serverless-express';
+import app from './index'; // Your existing Express app
+
+// Export Lambda handler
+export const handler = serverlessExpress({ app });
+```
+
+**Update server/index.ts:**
+```typescript
+// Remove or conditionally include server startup
+if (process.env.NODE_ENV !== 'production' || !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  const port = parseInt(process.env.PORT || "5000", 10);
+  httpServer.listen(port, "0.0.0.0", () => {
+    log(`Server running on port ${port}`);
+  });
+}
+
+// Export app for Lambda
+export default app;
+```
+
+**Key changes:**
+- Express app runs normally in Lambda
+- No code changes to routes or middleware
+- API Gateway handles HTTP → Lambda event conversion
+- serverless-express handles Lambda event → Express request conversion
+
+### 3.2 Remove Replit Dependencies
 
 **Files to modify:**
 - `server/replit_integrations/auth/*` - Replace with Cognito
@@ -222,8 +260,9 @@ cdk destroy --all
 **New dependencies to add:**
 ```json
 {
+  "@codegenie/serverless-express": "^4.14.0",
   "amazon-cognito-identity-js": "^6.3.0",
-  "@aws-sdk/client-secrets-manager": "^3.x",
+  "@aws-sdk/client-ssm": "^3.x",
   "@aws-sdk/client-bedrock-runtime": "^3.x"
 }
 ```
@@ -233,7 +272,7 @@ cdk destroy --all
 - `openid-client` (Replit Auth)
 - `stripe-replit-sync`
 
-### 3.2 Aurora DSQL Schema Compatibility
+### 3.3 Aurora DSQL Schema Compatibility
 
 **Review current schema for DSQL constraints:**
 
@@ -269,7 +308,7 @@ cdk destroy --all
 4. **Remove temporary tables** (if any):
    - Replace with CTEs or regular tables with cleanup
 
-### 3.3 Cognito Integration
+### 3.4 Cognito Integration
 
 **Backend changes** (`server/auth/cognito.ts` - new file):
 
@@ -288,7 +327,7 @@ cdk destroy --all
 - Create corresponding users in Cognito
 - Update user references to use Cognito sub (user ID)
 
-### 3.4 Bedrock Integration (Replace OpenAI)
+### 3.5 Bedrock Integration (Replace OpenAI)
 
 **Current OpenAI usage locations:**
 - `server/routes.ts` - AI complaint response generation
@@ -312,39 +351,125 @@ cdk destroy --all
 - Replace audio integrations with Polly/Transcribe
 - Update image generation to use Stable Diffusion
 
-### 3.5 Environment Variables
+### 3.6 SSM Parameter Store Integration
+
+**Load parameters at Lambda startup:**
+```typescript
+import { SSMClient, GetParameterCommand, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
+
+const ssmClient = new SSMClient({ region: process.env.AWS_REGION });
+
+async function loadParameters() {
+  const response = await ssmClient.send(
+    new GetParametersByPathCommand({
+      Path: '/grievance-portal/',
+      Recursive: true,
+      WithDecryption: true, // For SecureString parameters
+    })
+  );
+  
+  const params: Record<string, string> = {};
+  response.Parameters?.forEach(param => {
+    const key = param.Name?.replace('/grievance-portal/', '');
+    if (key && param.Value) {
+      params[key] = param.Value;
+    }
+  });
+  
+  return params;
+}
+
+// Cache parameters (Lambda container reuse)
+let cachedParams: Record<string, string> | null = null;
+
+export async function getParameters() {
+  if (!cachedParams) {
+    cachedParams = await loadParameters();
+  }
+  return cachedParams;
+}
+```
+
+**Use in application:**
+```typescript
+const params = await getParameters();
+const stripeSecretKey = params['stripe/secret-key'];
+const dbUrl = params['database/url'];
+```
+
+### 3.7 Environment Variables
 
 **New environment variable structure:**
 ```bash
-# Database
-DATABASE_URL=<from Secrets Manager>
-
 # AWS Region
 AWS_REGION=us-east-1
 
-# Cognito
-COGNITO_USER_POOL_ID=<from CloudFormation output>
-COGNITO_CLIENT_ID=<from CloudFormation output>
-COGNITO_REGION=us-east-1
-
-# Stripe (from Secrets Manager)
-STRIPE_SECRET_KEY=<from Secrets Manager>
-STRIPE_PUBLISHABLE_KEY=<from Secrets Manager>
-STRIPE_WEBHOOK_SECRET=<from Secrets Manager>
-
-# Session
-SESSION_SECRET=<from Secrets Manager>
+# Lambda-specific
+AWS_LAMBDA_FUNCTION_NAME=grievance-portal-function
 
 # Application
 NODE_ENV=production
-PORT=3000
+
+# All secrets loaded from SSM Parameter Store at runtime
 ```
 
 ---
 
-## Phase 4: Containerization
+## Phase 4: Lambda Deployment Package
 
-### 4.1 Dockerfile
+### 4.1 Build Script
+
+**Update package.json:**
+```json
+{
+  "scripts": {
+    "build": "tsx script/build.ts",
+    "build:lambda": "npm run build && npm run package:lambda",
+    "package:lambda": "cd dist && zip -r ../lambda.zip . && cd .."
+  }
+}
+```
+
+**Update build script** (`script/build.ts`):
+```typescript
+// Build for Lambda (single file output)
+await esbuild({
+  entryPoints: ['server/lambda.ts'],
+  bundle: true,
+  platform: 'node',
+  target: 'node20',
+  outfile: 'dist/index.js',
+  external: ['aws-sdk', '@aws-sdk/*'], // AWS SDK available in Lambda runtime
+  minify: true,
+});
+```
+
+### 4.2 Lambda Package Structure
+
+```
+lambda.zip
+├── index.js           # Bundled Lambda handler
+├── node_modules/      # Production dependencies
+└── package.json       # For Lambda runtime
+```
+
+### 4.3 Local Testing
+
+**Test Lambda locally with SAM CLI:**
+```bash
+# Install SAM CLI
+brew install aws-sam-cli
+
+# Create sam-template.yaml
+sam local start-api
+
+# Test endpoint
+curl http://localhost:3000/api/health
+```
+
+---
+
+## Phase 5: Lambda + API Gateway Setup (via CDK)
 
 **Create** `Dockerfile`:
 
@@ -570,20 +695,45 @@ const buildProject = new codebuild.Project(this, 'BuildProject', {
   }),
   environment: {
     buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
-    privileged: true, // Required for Docker
     environmentVariables: {
-      ECR_REGISTRY: { value: ecrRepository.repositoryUri },
-      ECR_REPOSITORY: { value: ecrRepository.repositoryName },
+      S3_BUCKET: { value: deploymentBucket.bucketName },
       AWS_REGION: { value: this.region },
     },
   },
   buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yml'),
 });
 
-ecrRepository.grantPullPush(buildProject);
+deploymentBucket.grantReadWrite(buildProject);
+lambdaFunction.grantUpdate(buildProject);
 ```
 
 **buildspec.yml** (create in repo root):
+```yaml
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  pre_build:
+    commands:
+      - echo Installing dependencies...
+      - npm ci
+  build:
+    commands:
+      - echo Build started on `date`
+      - npm run build
+      - npm run package:lambda
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - aws s3 cp lambda.zip s3://$S3_BUCKET/lambda.zip
+      - aws lambda update-function-code --function-name grievance-portal --s3-bucket $S3_BUCKET --s3-key lambda.zip
+
+artifacts:
+  files:
+    - lambda.zip
+```
 
 ```yaml
 version: 0.2
@@ -893,35 +1043,46 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 
 ## Phase 10: Cost Optimization
 
-### 10.1 Estimated Monthly Costs (Low Volume)
+### 10.1 Estimated Monthly Costs (Low Volume) - UPDATED FOR LAMBDA
 
 | Service | Configuration | Monthly Cost |
 |---------|--------------|--------------|
-| Aurora DSQL | Free tier: 100K DPUs + 1GB | $0-10 |
-| ECS Fargate | 1 task, 0.25 vCPU, 512 MB | $15 |
-| NAT Gateway | 1 gateway | $32 |
-| Application Load Balancer | Base + minimal traffic | $17 |
-| Secrets Manager | 4 secrets | $1.60 |
-| ECR | <1 GB storage | $0.10 |
-| CloudWatch | Logs + metrics | $5 |
-| Bedrock | Pay per use | Variable |
-| **Total** | | **~$71/month** |
+| Aurora DSQL | Free tier: 100K DPUs + 1GB | **$0-5** |
+| Lambda | Free tier: 1M requests + 400K GB-seconds<br>Beyond: $0.20/1M requests | **$0-2** |
+| API Gateway | Free tier: 1M requests (first 12 months)<br>Beyond: $3.50/1M requests | **$0-3** |
+| SSM Parameter Store | Standard parameters (free) | **$0** |
+| CloudWatch Logs | ~2 GB ingestion + storage | **$2** |
+| S3 | Lambda deployment packages | **$0.10** |
+| CodeBuild | Free tier: 100 build minutes/month | **$0** |
+| Bedrock | Pay-per-use | **Variable** |
+| **TOTAL (excluding Bedrock)** | | **~$4-12/month** |
 
-**Key savings vs original plan:**
-- Aurora DSQL vs Aurora Serverless v2: **$33-43/month saved**
-- DSQL scales to zero when idle (no minimum charges)
+**Massive savings: $59-67/month vs ECS Fargate approach!** 🎉
 
-### 10.2 Cost Reduction Options
+### 10.2 Cost Comparison
 
-**If costs need to be lower:**
-1. Remove NAT Gateway, use public subnets for ECS (less secure, saves $32/month)
-2. Use Fargate Spot for 70% discount (less reliable)
-3. DSQL already optimized (scales to zero)
+| Architecture | Monthly Cost | Notes |
+|--------------|--------------|-------|
+| **Lambda + API Gateway** | **$4-12** | ✅ Scales to zero, no VPC |
+| ECS Fargate + ALB | $71 | Always-on, requires VPC/NAT |
+| Aurora Serverless v2 + ECS | $114 | Original plan with Aurora Serverless |
 
-**Scaling costs:**
-- Auto-scaling adds ~$15/task/month
-- Only scales when needed, returns to 1 task when idle
-- DSQL charges only for actual usage (DPUs consumed)
+**Total savings: 83-94% cost reduction!**
+
+### 10.3 Scaling Costs (Lambda Architecture)
+
+**At 1M requests/month (free tier limit):**
+- Lambda: Still free (within 400K GB-seconds)
+- API Gateway: $0 (first 12 months), then $3.50/month
+- **Total: ~$4-8/month**
+
+**At 10M requests/month:**
+- Lambda: ~$2 (1M free + 9M × $0.20)
+- API Gateway: $35 (10M × $3.50)
+- DSQL: ~$10-20 (increased usage)
+- **Total: ~$47-57/month**
+
+**Lambda scales linearly with usage - you only pay for what you use!**
 
 ---
 
@@ -933,29 +1094,31 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 - [ ] Choose AWS region (recommend us-east-1 for Bedrock/DSQL availability)
 - [ ] Install AWS CDK: `npm install -g aws-cdk`
 - [ ] Bootstrap CDK: `cdk bootstrap aws://ACCOUNT-ID/REGION`
-- [ ] Register domain (optional) or use ALB DNS
-- [ ] Set up Stripe webhook endpoint (will be ALB URL)
+- [ ] Register domain (optional) or use API Gateway URL
+- [ ] Set up Stripe webhook endpoint (will be API Gateway URL)
 - [ ] Export Replit database
 - [ ] Document current admin users
 
 ### 11.2 Infrastructure Deployment (CDK)
 
 - [ ] Create CDK project: `mkdir infrastructure && cd infrastructure && cdk init`
-- [ ] Implement all stacks (Network, Database, Auth, Secrets, Compute, Pipeline)
+- [ ] Implement all stacks (Database, Auth, Parameters, Compute, Pipeline)
 - [ ] Review synthesized templates: `cdk synth`
 - [ ] Deploy infrastructure: `cdk deploy --all`
-- [ ] Activate GitHub connection in AWS Console
 - [ ] Verify all resources created successfully
 
 ### 11.3 Application Deployment
 
-- [ ] Refactor code (remove Replit, add Cognito/Bedrock, DSQL compatibility)
+- [ ] Install serverless-express: `npm install @codegenie/serverless-express`
+- [ ] Create Lambda handler (`server/lambda.ts`)
+- [ ] Update Express app to export for Lambda
+- [ ] Refactor code (remove Replit, add Cognito/Bedrock, DSQL compatibility, SSM)
 - [ ] Update schema for DSQL constraints
-- [ ] Create Dockerfile and buildspec.yml
-- [ ] Test locally with Docker Compose
+- [ ] Create buildspec.yml
+- [ ] Test locally with SAM CLI
 - [ ] Push code to GitHub main branch
-- [ ] Verify CodePipeline triggers and builds
-- [ ] Check ECS service starts successfully
+- [ ] Verify CodeBuild triggers and deploys Lambda
+- [ ] Test API Gateway endpoint
 
 ### 11.4 Data Migration
 
@@ -966,12 +1129,12 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 
 ### 11.5 Post-Deployment
 
-- [ ] Update Stripe webhook URL to ALB endpoint
+- [ ] Update Stripe webhook URL to API Gateway endpoint
 - [ ] Test Stripe payment flow
 - [ ] Test authentication flow with Cognito
 - [ ] Test AI features (Bedrock)
-- [ ] Verify CloudWatch alarms configured
-- [ ] Test auto-scaling behavior
+- [ ] Verify CloudWatch logs working
+- [ ] Test cold start performance
 - [ ] Document deployment process
 
 ---
@@ -982,19 +1145,27 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 
 **One-time setup:**
 ```bash
-# Install Docker Desktop
+# Install SAM CLI for local Lambda testing
+brew install aws-sam-cli
+
 # Clone repository
 git clone https://github.com/pisomojadogrande/grievance-portal.git
 cd grievance-portal
 
+# Install dependencies
+npm install
+
 # Create .env.local with development credentials
 cp .env.example .env.local
 
-# Start local environment
-docker-compose up -d
+# Start local PostgreSQL (or use Docker)
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:15
 
 # Run migrations
-npm run db:push
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres npm run db:push
+
+# Test Lambda locally
+sam local start-api
 
 # Access application
 open http://localhost:3000
@@ -1004,36 +1175,36 @@ open http://localhost:3000
 
 **Iterative development:**
 1. Make code changes locally
-2. Test with `docker-compose up` (hot reload enabled)
+2. Test with `sam local start-api` or `npm run dev`
 3. Commit to feature branch
 4. Push to GitHub
 5. Create PR to main
-6. Merge triggers automatic deployment to AWS
+6. Merge triggers automatic deployment to AWS Lambda
 
 **Testing before push:**
 - Unit tests: `npm test`
-- Build test: `docker build -t test .`
-- Integration test: `docker-compose up` and manual testing
+- Build test: `npm run build && npm run package:lambda`
+- Local Lambda test: `sam local start-api`
 
 ---
 
 ## Phase 13: Rollback Strategy
 
-### 13.1 Application Rollback (CDK-managed)
+### 13.1 Lambda Rollback
 
-**ECS makes this easy:**
-1. Go to ECS Console → Service → Deployments
-2. Click "Create new deployment"
-3. Select previous task definition revision
-4. Deploy
-
-**Or via CLI:**
+**Lambda versions:**
 ```bash
-aws ecs update-service \
-  --cluster grievance-portal-cluster \
-  --service grievance-portal-service \
-  --task-definition grievance-portal:PREVIOUS_REVISION
+# List Lambda versions
+aws lambda list-versions-by-function --function-name grievance-portal
+
+# Rollback to previous version
+aws lambda update-alias --function-name grievance-portal --name prod --function-version <PREVIOUS_VERSION>
 ```
+
+**Or via Console:**
+1. Go to Lambda Console → grievance-portal
+2. Versions tab → Select previous version
+3. Update alias to point to that version
 
 ### 13.2 Database Rollback (Aurora DSQL)
 
@@ -1071,10 +1242,9 @@ cdk deploy --all
 # Or use CloudFormation console to rollback individual stacks
 ```
 
-**CodePipeline rollback:**
-- View deployment history in console
-- Re-run previous successful deployment
-- Or push a revert commit to main
+**CodeBuild rollback:**
+- Push a revert commit to main
+- CodeBuild automatically triggers and deploys
 
 ---
 
@@ -1082,17 +1252,17 @@ cdk deploy --all
 
 ### 14.1 Short-term (1-3 months)
 
-- [ ] Add staging environment (separate ECS service)
-- [ ] Implement blue/green deployments
-- [ ] Add CloudFront CDN for static assets
+- [ ] Add staging environment (separate Lambda + API Gateway)
+- [ ] Implement Lambda provisioned concurrency (eliminate cold starts)
+- [ ] Add CloudFront CDN for static assets and API caching
 - [ ] Set up custom domain with Route 53
-- [ ] Enable WAF (Web Application Firewall) on ALB
-- [ ] Add automated testing in pipeline
+- [ ] Enable WAF (Web Application Firewall) on API Gateway
+- [ ] Add automated testing in CodeBuild
 
 ### 14.2 Long-term (3-6 months)
 
 - [ ] Multi-region DSQL cluster for HA (99.999% availability)
-- [ ] Implement caching with ElastiCache
+- [ ] Implement caching with ElastiCache or DynamoDB
 - [ ] Add S3 for file uploads (if needed)
 - [ ] Implement comprehensive monitoring dashboard
 - [ ] Add cost anomaly detection
@@ -1103,7 +1273,32 @@ cdk deploy --all
 
 ## Appendix A: Key Code Changes Required
 
-### A.1 Schema Changes for DSQL Compatibility
+### A.1 Lambda Handler Creation
+
+**New file** (`server/lambda.ts`):
+```typescript
+import serverlessExpress from '@codegenie/serverless-express';
+import app from './index';
+
+// Wrap Express app for Lambda
+export const handler = serverlessExpress({ app });
+```
+
+**Update** (`server/index.ts`):
+```typescript
+// Conditionally start server (not in Lambda)
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  const port = parseInt(process.env.PORT || "5000", 10);
+  httpServer.listen(port, "0.0.0.0", () => {
+    log(`Server running on port ${port}`);
+  });
+}
+
+// Export for Lambda
+export default app;
+```
+
+### A.2 Schema Changes for DSQL Compatibility
 
 **Remove foreign keys:**
 ```typescript
@@ -1132,7 +1327,7 @@ async createPayment(payment: InsertPayment) {
 }
 ```
 
-### A.2 Authentication Migration
+### A.3 Authentication Migration
 
 **Remove:**
 - `server/replit_integrations/auth/*`
@@ -1144,7 +1339,7 @@ async createPayment(payment: InsertPayment) {
 - Token-based authentication middleware
 - Cognito user management utilities
 
-### A.3 AI Migration
+### A.4 AI Migration
 
 **Replace OpenAI calls with Bedrock:**
 
@@ -1168,149 +1363,137 @@ const response = await bedrockClient.invokeModel({
 });
 ```
 
-### A.4 Environment Variable Loading
+### A.5 SSM Parameter Store Loading
 
-**Add Secrets Manager integration:**
+**Load parameters at Lambda startup:**
 ```typescript
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 
-async function loadSecrets() {
-  const client = new SecretsManagerClient({ region: process.env.AWS_REGION });
-  const secrets = await client.send(
-    new GetSecretValueCommand({ SecretId: "grievance-portal/stripe" })
+const ssmClient = new SSMClient({ region: process.env.AWS_REGION });
+let cachedParams: Record<string, string> | null = null;
+
+async function loadParameters() {
+  const response = await ssmClient.send(
+    new GetParametersByPathCommand({
+      Path: '/grievance-portal/',
+      Recursive: true,
+      WithDecryption: true,
+    })
   );
-  return JSON.parse(secrets.SecretString);
+  
+  const params: Record<string, string> = {};
+  response.Parameters?.forEach(param => {
+    const key = param.Name?.replace('/grievance-portal/', '');
+    if (key && param.Value) params[key] = param.Value;
+  });
+  
+  return params;
+}
+
+export async function getParameters() {
+  if (!cachedParams) cachedParams = await loadParameters();
+  return cachedParams;
 }
 ```
 
----
-
 ## Appendix B: CDK Code Examples
 
-### B.1 Complete Network Stack
+### B.1 Complete Lambda + API Gateway Stack
 
 ```typescript
 import * as cdk from 'aws-cdk-lib';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 
-export class NetworkStack extends cdk.Stack {
-  public readonly vpc: ec2.Vpc;
-  public readonly albSecurityGroup: ec2.SecurityGroup;
-  public readonly ecsSecurityGroup: ec2.SecurityGroup;
-  public readonly dsqlSecurityGroup: ec2.SecurityGroup;
-
+export class ComputeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // VPC with public and private subnets
-    this.vpc = new ec2.Vpc(this, 'GrievancePortalVpc', {
-      maxAzs: 2,
-      natGateways: 1, // Cost optimization
-      subnetConfiguration: [
-        {
-          name: 'Public',
-          subnetType: ec2.SubnetType.PUBLIC,
-          cidrMask: 24,
-        },
-        {
-          name: 'Private',
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-          cidrMask: 24,
-        },
-      ],
+    // Lambda function
+    const lambdaFunction = new lambda.Function(this, 'GrievancePortalFunction', {
+      functionName: 'grievance-portal',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset('../lambda.zip'),
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      environment: {
+        NODE_ENV: 'production',
+        AWS_REGION: this.region,
+      },
+      logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
-    // ALB Security Group
-    this.albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
-      vpc: this.vpc,
-      description: 'Security group for Application Load Balancer',
-      allowAllOutbound: true,
-    });
-    this.albSecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(80),
-      'Allow HTTP'
-    );
-    this.albSecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(443),
-      'Allow HTTPS'
-    );
+    // Grant permissions
+    lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParametersByPath'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/grievance-portal/*`],
+    }));
 
-    // ECS Security Group
-    this.ecsSecurityGroup = new ec2.SecurityGroup(this, 'EcsSecurityGroup', {
-      vpc: this.vpc,
-      description: 'Security group for ECS tasks',
-      allowAllOutbound: true,
-    });
-    this.ecsSecurityGroup.addIngressRule(
-      this.albSecurityGroup,
-      ec2.Port.tcp(3000),
-      'Allow traffic from ALB'
-    );
+    lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: ['*'],
+    }));
 
-    // DSQL Security Group
-    this.dsqlSecurityGroup = new ec2.SecurityGroup(this, 'DsqlSecurityGroup', {
-      vpc: this.vpc,
-      description: 'Security group for Aurora DSQL',
-      allowAllOutbound: false,
+    // API Gateway
+    const api = new apigateway.RestApi(this, 'GrievancePortalApi', {
+      restApiName: 'Grievance Portal API',
+      deployOptions: {
+        stageName: 'prod',
+        throttlingRateLimit: 100,
+        throttlingBurstLimit: 200,
+      },
     });
-    this.dsqlSecurityGroup.addIngressRule(
-      this.ecsSecurityGroup,
-      ec2.Port.tcp(5432),
-      'Allow PostgreSQL from ECS'
-    );
+
+    // Lambda integration (proxy all requests)
+    const integration = new apigateway.LambdaIntegration(lambdaFunction, { proxy: true });
+    api.root.addProxy({ defaultIntegration: integration, anyMethod: true });
+
+    new cdk.CfnOutput(this, 'ApiEndpoint', {
+      value: api.url,
+      description: 'API Gateway endpoint URL',
+    });
   }
 }
 ```
 
-### B.2 Complete Database Stack
+### B.2 Complete SSM Parameters Stack
 
 ```typescript
 import * as cdk from 'aws-cdk-lib';
-import * as dsql from '@aws-cdk/aws-dsql-alpha';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
-interface DatabaseStackProps extends cdk.StackProps {
-  vpc: ec2.Vpc;
-  securityGroup: ec2.SecurityGroup;
-}
-
-export class DatabaseStack extends cdk.Stack {
-  public readonly cluster: dsql.CfnCluster;
-  public readonly connectionSecret: secretsmanager.Secret;
-
-  constructor(scope: Construct, id: string, props: DatabaseStackProps) {
+export class ParametersStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Aurora DSQL Cluster
-    this.cluster = new dsql.CfnCluster(this, 'GrievancePortalDsql', {
-      clusterName: 'grievance-portal-dsql',
-      deletionProtectionEnabled: true, // Production safety
+    // Stripe parameters
+    new ssm.StringParameter(this, 'StripeSecretKey', {
+      parameterName: '/grievance-portal/stripe/secret-key',
+      stringValue: 'PLACEHOLDER', // Update manually after deployment
+      type: ssm.ParameterType.SECURE_STRING,
     });
 
-    // Store connection string in Secrets Manager
-    this.connectionSecret = new secretsmanager.Secret(this, 'DsqlConnectionSecret', {
-      secretName: 'grievance-portal/database',
-      description: 'Aurora DSQL connection string',
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({
-          host: this.cluster.attrEndpoint,
-          port: 5432,
-          database: 'postgres',
-          username: 'admin',
-        }),
-        generateStringKey: 'password',
-      },
+    new ssm.StringParameter(this, 'StripePublishableKey', {
+      parameterName: '/grievance-portal/stripe/publishable-key',
+      stringValue: 'PLACEHOLDER',
     });
 
-    // Output cluster endpoint
-    new cdk.CfnOutput(this, 'DsqlEndpoint', {
-      value: this.cluster.attrEndpoint,
-      description: 'Aurora DSQL cluster endpoint',
+    new ssm.StringParameter(this, 'StripeWebhookSecret', {
+      parameterName: '/grievance-portal/stripe/webhook-secret',
+      stringValue: 'PLACEHOLDER',
+      type: ssm.ParameterType.SECURE_STRING,
+    });
+
+    // Session secret
+    new ssm.StringParameter(this, 'SessionSecret', {
+      parameterName: '/grievance-portal/session/secret',
+      stringValue: 'PLACEHOLDER',
+      type: ssm.ParameterType.SECURE_STRING,
     });
   }
 }
@@ -1322,46 +1505,47 @@ export class DatabaseStack extends cdk.Stack {
 # CDK Commands
 cdk synth                    # Synthesize CloudFormation templates
 cdk deploy --all             # Deploy all stacks
-cdk deploy NetworkStack      # Deploy specific stack
+cdk deploy ComputeStack      # Deploy specific stack
 cdk diff                     # Show changes
 cdk destroy --all            # Destroy all resources
 
-# View ECS service status
-aws ecs describe-services --cluster grievance-portal-cluster --services grievance-portal-service
+# Lambda Commands
+aws lambda list-functions
+aws lambda get-function --function-name grievance-portal
+aws lambda update-function-code --function-name grievance-portal --s3-bucket BUCKET --s3-key lambda.zip
+aws lambda invoke --function-name grievance-portal output.json
 
-# View recent logs
-aws logs tail /ecs/grievance-portal --follow
+# API Gateway Commands
+aws apigateway get-rest-apis
+aws apigateway test-invoke-method --rest-api-id API_ID --resource-id RESOURCE_ID --http-method GET
 
-# Trigger manual deployment
-aws ecs update-service --cluster grievance-portal-cluster --service grievance-portal-service --force-new-deployment
+# View Lambda logs
+aws logs tail /aws/lambda/grievance-portal --follow
 
 # View DSQL cluster status
 aws dsql get-cluster --identifier grievance-portal-dsql
 
-# Monitor DSQL DPU usage
-aws cloudwatch get-metric-statistics \
-  --namespace AWS/DSQL \
-  --metric-name TotalDPU \
-  --dimensions Name=ClusterIdentifier,Value=grievance-portal-dsql \
-  --start-time 2026-02-01T00:00:00Z \
-  --end-time 2026-02-06T23:59:59Z \
-  --period 3600 \
-  --statistics Sum
+# SSM Parameter Store Commands
+aws ssm get-parameters-by-path --path /grievance-portal/ --recursive --with-decryption
+aws ssm put-parameter --name /grievance-portal/stripe/secret-key --value "sk_live_..." --type SecureString --overwrite
 ```
 
-### B.4 Docker Commands
+### B.4 Local Testing Commands
 
 ```bash
-# Build locally
-docker build -t grievance-portal .
+# Build Lambda package
+npm run build
+npm run package:lambda
 
-# Run locally
-docker run -p 3000:3000 --env-file .env.local grievance-portal
+# Test Lambda locally with SAM
+sam local start-api
+curl http://localhost:3000/api/health
 
-# Push to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
-docker tag grievance-portal:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/grievance-portal:latest
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/grievance-portal:latest
+# Test specific Lambda function
+sam local invoke GrievancePortalFunction --event test-event.json
+
+# Run Express app normally (development)
+npm run dev
 ```
 
 ---
@@ -1370,15 +1554,29 @@ docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/grievance-portal:latest
 
 ### C.1 Common Issues
 
-**ECS tasks failing to start:**
-- Check CloudWatch logs for errors
-- Verify secrets are accessible
-- Ensure security groups allow traffic
-- Check task role permissions
+**Lambda cold starts:**
+- First request after idle: 1-3 seconds
+- Solution: Enable provisioned concurrency (costs extra)
+- Or: Accept cold starts for low-volume app
+
+**Lambda timeout errors:**
+- Check CloudWatch logs for actual error
+- Increase timeout in CDK (max 15 minutes)
+- Optimize database queries
+
+**API Gateway 502 errors:**
+- Lambda function crashed or timed out
+- Check CloudWatch logs: `/aws/lambda/grievance-portal`
+- Verify Lambda has correct IAM permissions
+
+**SSM Parameter Store access denied:**
+- Verify Lambda IAM role has `ssm:GetParameter` permission
+- Check parameter path matches: `/grievance-portal/*`
+- Ensure parameters exist in correct region
 
 **Database connection failures:**
-- Verify security group allows ECS → DSQL
-- Check connection string in Secrets Manager
+- Verify security group allows Lambda → DSQL (Lambda uses AWS-managed VPC)
+- Check connection string in SSM Parameter Store
 - Ensure DSQL cluster is active
 - Verify database credentials
 - Check for DSQL-specific errors (transaction limits, unsupported features)
@@ -1390,16 +1588,16 @@ docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/grievance-portal:latest
 - Temporary table errors: Use CTEs or regular tables
 
 **Stripe webhooks not working:**
-- Update webhook URL in Stripe dashboard
-- Verify ALB security group allows inbound 443
-- Check webhook signature verification
-- Review CloudWatch logs for errors
+- Update webhook URL in Stripe dashboard to API Gateway URL
+- Verify webhook signature verification
+- Check CloudWatch logs for errors
+- Test with Stripe CLI: `stripe listen --forward-to YOUR_API_URL/api/stripe/webhook`
 
-**Build failures in CodePipeline:**
-- Check CodeBuild logs
+**CodeBuild failures:**
+- Check CodeBuild logs in CloudWatch
 - Verify buildspec.yml syntax
-- Ensure Docker build succeeds locally
-- Check ECR permissions
+- Ensure build succeeds locally: `npm run build && npm run package:lambda`
+- Check Lambda update permissions
 
 **CDK deployment failures:**
 - Check CloudFormation events in console
@@ -1411,41 +1609,50 @@ docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/grievance-portal:latest
 
 ## Summary
 
-This plan provides a complete path from Replit to AWS with:
-- ✅ Production-ready architecture
-- ✅ **Very low cost at low volume (~$71/month, potentially $40-50 with DSQL free tier)**
-- ✅ **Aurora DSQL scales to zero (vs $43/month minimum for Aurora Serverless v2)**
+This plan provides a complete serverless path from Replit to AWS with:
+- ✅ **Production-ready serverless architecture**
+- ✅ **Extremely low cost: $4-12/month at low volume (83-94% savings)**
+- ✅ **True scale-to-zero: Lambda, API Gateway, and DSQL all scale to zero**
 - ✅ **All infrastructure defined in AWS CDK (TypeScript)**
-- ✅ Auto-scaling for growth
-- ✅ Automated deployments from GitHub
-- ✅ Local development environment with Docker Compose
-- ✅ Security best practices
-- ✅ Monitoring and logging
-- ✅ Rollback capabilities
+- ✅ **No VPC, No NAT Gateway, No ALB needed**
+- ✅ **Automated deployments from GitHub**
+- ✅ **Local development with SAM CLI**
+- ✅ **Security best practices**
+- ✅ **Monitoring and logging**
+- ✅ **Easy rollback capabilities**
 
-**Key Advantages of DSQL:**
-- Scales to zero when idle (no minimum charges)
-- Free tier: 100K DPUs + 1GB storage/month
-- Multi-AZ by default (high availability)
-- PostgreSQL wire protocol compatible
-- Saves $33-43/month vs Aurora Serverless v2
+**Key Advantages:**
+- **Lambda**: Scales to zero, pay per request ($0.20/1M requests)
+- **API Gateway**: Scales to zero, pay per request ($3.50/1M requests)
+- **Aurora DSQL**: Scales to zero, free tier 100K DPUs/month
+- **SSM Parameter Store**: Free for standard parameters
+- **No always-on infrastructure costs**
 
 **Trade-offs:**
-- No foreign keys (enforce in application)
-- No temporary tables (use CTEs)
-- 10K row transaction limit (batch large operations)
-- DDL/DML must be in separate transactions
+- Cold starts (1-3 seconds after idle)
+- 15-minute Lambda timeout limit
+- 6MB API Gateway payload limit
+- Requires Express app wrapper (serverless-express)
+- DSQL constraints (no foreign keys, 10K row transactions)
+
+**Cost Comparison:**
+| Volume | Lambda Architecture | ECS Fargate | Savings |
+|--------|---------------------|-------------|---------|
+| Low (<100K requests/month) | $4-12 | $71 | 83-94% |
+| Medium (1M requests/month) | $4-8 | $71 | 89-94% |
+| High (10M requests/month) | $47-57 | $71+ | 20-34% |
 
 **Next Steps:**
-1. Review and approve this plan
+1. Review and approve this serverless plan
 2. Set up AWS account and choose region (us-east-1 recommended)
 3. Install AWS CDK: `npm install -g aws-cdk`
-4. Begin Phase 1 (CDK Infrastructure Setup)
-5. Proceed through phases sequentially
-6. Test thoroughly at each phase
+4. Install SAM CLI: `brew install aws-sam-cli`
+5. Begin Phase 1 (CDK Infrastructure Setup)
+6. Proceed through phases sequentially
+7. Test thoroughly at each phase
 
 **Estimated Timeline:**
-- CDK infrastructure setup: 2-3 days
-- Code refactoring (Cognito/Bedrock/DSQL): 3-5 days
+- CDK infrastructure setup: 1-2 days
+- Code refactoring (Lambda wrapper, Cognito/Bedrock/DSQL, SSM): 3-5 days
 - Testing and deployment: 2-3 days
 - **Total: 1-2 weeks**
