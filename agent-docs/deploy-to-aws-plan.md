@@ -48,6 +48,14 @@ Supporting Services:
 
 ## Phase 1: AWS Infrastructure Setup
 
+**Validation Criteria:**
+- [ ] Aurora DSQL cluster status shows "ACTIVE" in AWS Console
+- [ ] Can connect to DSQL using psql with connection string
+- [ ] All SSM parameters exist and can be retrieved: `aws ssm get-parameters-by-path --path /grievance-portal/ --recursive`
+- [ ] Cognito user pool created with correct configuration
+- [ ] S3 bucket for Lambda deployments exists and is accessible
+- [ ] Test parameter retrieval: `aws ssm get-parameter --name /grievance-portal/session/secret --with-decryption`
+
 ### 1.1 No VPC Required! 🎉
 
 **Lambda runs in AWS-managed VPC by default:**
@@ -128,6 +136,14 @@ Supporting Services:
 ---
 
 ## Phase 2: Infrastructure as Code with AWS CDK
+
+**Validation Criteria:**
+- [ ] CDK project initializes successfully: `cdk synth` runs without errors
+- [ ] All stack files compile: `npm run build` succeeds
+- [ ] CloudFormation templates generated in `cdk.out/` directory
+- [ ] Stack dependencies correctly defined (no circular dependencies)
+- [ ] `cdk diff` shows expected resources to be created
+- [ ] Dry-run deployment succeeds: `cdk deploy --all --dry-run`
 
 ### 2.1 CDK Project Structure
 
@@ -213,6 +229,18 @@ cdk destroy --all
 ---
 
 ## Phase 3: Application Refactoring
+
+**Validation Criteria:**
+- [ ] Application builds successfully: `npm run build` completes without errors
+- [ ] Lambda handler exports correctly: `server/lambda.ts` has `export const handler`
+- [ ] Express app exports for Lambda: `server/index.ts` has `export default app`
+- [ ] All Replit dependencies removed from package.json
+- [ ] Schema compiles without foreign key references
+- [ ] SSM parameter loading function works locally (with AWS credentials)
+- [ ] Cognito integration code compiles
+- [ ] Bedrock client code compiles
+- [ ] Local testing with SAM CLI: `sam local start-api` runs successfully
+- [ ] Health check endpoint responds: `curl http://localhost:3000/api/health`
 
 ### 3.1 Lambda Adapter for Express App
 
@@ -417,6 +445,16 @@ NODE_ENV=production
 
 ## Phase 4: Lambda Deployment Package
 
+**Validation Criteria:**
+- [ ] Build script completes: `npm run build` succeeds
+- [ ] Lambda package created: `lambda.zip` file exists
+- [ ] Package size is reasonable (<50MB uncompressed, <10MB compressed)
+- [ ] Package contains `index.js` handler
+- [ ] Package structure is correct: unzip and verify contents
+- [ ] Local Lambda test succeeds: `sam local invoke GrievancePortalFunction`
+- [ ] Test event returns expected response
+- [ ] No unnecessary files in package (node_modules trimmed to production only)
+
 ### 4.1 Build Script
 
 **Update package.json:**
@@ -470,6 +508,19 @@ curl http://localhost:3000/api/health
 ---
 
 ## Phase 5: Lambda + API Gateway Setup (via CDK)
+
+**Validation Criteria:**
+- [ ] CDK deployment succeeds: `cdk deploy ComputeStack` completes
+- [ ] Lambda function appears in AWS Console
+- [ ] Lambda function has correct IAM permissions (SSM, Bedrock, DSQL)
+- [ ] API Gateway REST API created with correct stage
+- [ ] API Gateway endpoint URL output from CDK
+- [ ] Test API endpoint: `curl https://API_ID.execute-api.REGION.amazonaws.com/prod/api/health`
+- [ ] Health check returns 200 OK with JSON response
+- [ ] CloudWatch log group created: `/aws/lambda/grievance-portal`
+- [ ] Lambda invocation logs appear in CloudWatch
+- [ ] Test cold start time (should be <3 seconds)
+- [ ] Test warm invocation time (should be <500ms)
 
 **Create** `Dockerfile`:
 
@@ -679,6 +730,20 @@ const httpsListener = alb.addListener('HttpsListener', {
 
 ## Phase 6: CI/CD Pipeline (via CDK)
 
+**Validation Criteria:**
+- [ ] GitHub connection created and shows "Available" status in AWS Console
+- [ ] CodeBuild project created and configured correctly
+- [ ] CodePipeline created with Source → Build stages
+- [ ] S3 bucket for artifacts exists
+- [ ] Manual test: Push commit to main branch
+- [ ] Pipeline automatically triggers within 1 minute
+- [ ] CodeBuild phase completes successfully
+- [ ] Lambda function code updated automatically
+- [ ] Test updated Lambda: `curl API_ENDPOINT/api/health`
+- [ ] CloudWatch logs show new deployment
+- [ ] Verify Lambda version incremented
+- [ ] Test rollback: Update Lambda to previous version and verify
+
 ### 6.1 CodeBuild Project (CDK)
 
 **CDK Code** (`lib/pipeline-stack.ts`):
@@ -841,6 +906,20 @@ new cdk.CfnOutput(this, 'GitHubConnectionArn', {
 
 ## Phase 7: Database Migration
 
+**Validation Criteria:**
+- [ ] DSQL cluster connection successful: `psql $DSQL_URL -c "SELECT version();"`
+- [ ] Schema migration completes: `npm run db:push` succeeds
+- [ ] All tables created: `psql $DSQL_URL -c "\dt"` shows expected tables
+- [ ] Table structure correct: `psql $DSQL_URL -c "\d complaints"` shows columns
+- [ ] No foreign key constraints in schema
+- [ ] Data export from Replit successful: `backup.sql` file created
+- [ ] Data import to DSQL completes without errors
+- [ ] Row counts match: Compare `SELECT COUNT(*) FROM complaints` between old and new DB
+- [ ] Sample data queries return expected results
+- [ ] Admin users migrated to Cognito
+- [ ] Test authentication with migrated user
+- [ ] Application connects to DSQL successfully via Lambda
+
 ### 7.1 Schema Migration to Aurora DSQL
 
 **Steps:**
@@ -894,6 +973,19 @@ Store in Secrets Manager, reference in ECS task definition via CDK.
 ---
 
 ## Phase 8: Monitoring and Logging
+
+**Validation Criteria:**
+- [ ] CloudWatch log groups exist: `/aws/lambda/grievance-portal`, `/aws/codebuild/grievance-portal-build`
+- [ ] Lambda logs appear in real-time: `aws logs tail /aws/lambda/grievance-portal --follow`
+- [ ] Log retention set correctly (1 week)
+- [ ] CloudWatch alarms created and in "OK" state
+- [ ] Test alarm: Trigger high CPU/error condition and verify alarm fires
+- [ ] SNS topic created for alarm notifications (if configured)
+- [ ] Test notification: Manually trigger alarm and verify email received
+- [ ] CloudWatch Insights queries work: Run sample query on Lambda logs
+- [ ] Metrics dashboard shows Lambda invocations, duration, errors
+- [ ] DSQL DPU usage visible in CloudWatch metrics
+- [ ] API Gateway metrics visible (request count, latency, errors)
 
 ### 8.1 CloudWatch Logs (CDK)
 
@@ -957,6 +1049,21 @@ app.get('/api/health', (req, res) => {
 ---
 
 ## Phase 9: Security Hardening
+
+**Validation Criteria:**
+- [ ] Lambda IAM role has minimum required permissions (principle of least privilege)
+- [ ] Test IAM permissions: Lambda can access SSM, DSQL, Bedrock
+- [ ] Test IAM restrictions: Lambda cannot access unrelated services
+- [ ] All secrets stored in SSM Parameter Store (SecureString type)
+- [ ] No secrets in environment variables or code
+- [ ] API Gateway has throttling configured (100 req/sec rate, 200 burst)
+- [ ] Test throttling: Send burst of requests and verify 429 responses
+- [ ] HTTPS enforced on API Gateway (no HTTP access)
+- [ ] Test security: `curl http://API_ENDPOINT` should fail or redirect
+- [ ] CloudWatch logs don't contain sensitive data (passwords, keys)
+- [ ] Review IAM policy simulator for Lambda role
+- [ ] Verify Cognito user pool has secure password policy
+- [ ] Test authentication: Unauthenticated requests to protected endpoints return 401
 
 ### 9.1 IAM Roles (CDK)
 
@@ -1043,6 +1150,20 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 
 ## Phase 10: Cost Optimization
 
+**Validation Criteria:**
+- [ ] Review AWS Cost Explorer for first week of usage
+- [ ] Verify Lambda stays within free tier (1M requests, 400K GB-seconds)
+- [ ] Verify API Gateway stays within free tier (1M requests for first 12 months)
+- [ ] Verify DSQL stays within free tier (100K DPUs, 1GB storage)
+- [ ] Check CloudWatch costs (<$2/month for logs)
+- [ ] Set up AWS Budget alert for $20/month threshold
+- [ ] Test budget alert: Verify email notification received
+- [ ] Review Cost Allocation Tags on all resources
+- [ ] Verify no unexpected charges (NAT Gateway, ALB, etc.)
+- [ ] Calculate actual cost per request based on first week
+- [ ] Compare actual costs to estimates in plan
+- [ ] Document any cost surprises or optimizations needed
+
 ### 10.1 Estimated Monthly Costs (Low Volume) - UPDATED FOR LAMBDA
 
 | Service | Configuration | Monthly Cost |
@@ -1087,6 +1208,21 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 ---
 
 ## Phase 11: Deployment Checklist
+
+**Validation Criteria:**
+- [ ] All pre-deployment checklist items completed
+- [ ] All infrastructure deployment items completed
+- [ ] All application deployment items completed
+- [ ] All data migration items completed
+- [ ] All post-deployment items completed
+- [ ] End-to-end test: Submit complaint through UI
+- [ ] Test payment flow: Complete Stripe payment
+- [ ] Test authentication: Login/logout with Cognito
+- [ ] Test AI features: Generate AI response with Bedrock
+- [ ] Test webhook: Trigger Stripe webhook and verify processing
+- [ ] Load test: Send 100 concurrent requests and verify no errors
+- [ ] Verify all CloudWatch alarms in "OK" state
+- [ ] Document deployment date, versions, and any issues encountered
 
 ### 11.1 Pre-Deployment
 
@@ -1141,6 +1277,20 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 
 ## Phase 12: Local Development Workflow
 
+**Validation Criteria:**
+- [ ] SAM CLI installed: `sam --version` shows version
+- [ ] Local PostgreSQL running: `psql postgresql://localhost:5432/postgres -c "SELECT 1;"`
+- [ ] Local environment variables configured in `.env.local`
+- [ ] Local database migrations succeed: `npm run db:push`
+- [ ] Local SAM API starts: `sam local start-api` runs without errors
+- [ ] Local health check responds: `curl http://localhost:3000/api/health`
+- [ ] Local development server runs: `npm run dev` starts successfully
+- [ ] Hot reload works: Change code and verify auto-reload
+- [ ] Local tests pass: `npm test` succeeds
+- [ ] Local build succeeds: `npm run build && npm run package:lambda`
+- [ ] Can test Lambda locally with sample events
+- [ ] Local debugging works with breakpoints
+
 ### 12.1 Development Setup
 
 **One-time setup:**
@@ -1189,6 +1339,19 @@ open http://localhost:3000
 ---
 
 ## Phase 13: Rollback Strategy
+
+**Validation Criteria:**
+- [ ] Lambda versions visible: `aws lambda list-versions-by-function` shows multiple versions
+- [ ] Lambda alias configured: `aws lambda get-alias --function-name grievance-portal --name prod`
+- [ ] Test Lambda rollback: Update alias to previous version and verify
+- [ ] Verify rolled-back version works: Test API endpoint
+- [ ] DSQL backup plan configured in AWS Backup
+- [ ] Manual DSQL snapshot created before migration
+- [ ] Test DSQL restore: Create test restore and verify data
+- [ ] CDK rollback tested: `git checkout` previous commit and redeploy
+- [ ] CloudFormation stack rollback tested (in non-prod environment)
+- [ ] Document rollback procedures and time estimates
+- [ ] Test complete rollback scenario: Lambda + Database + Infrastructure
 
 ### 13.1 Lambda Rollback
 
@@ -1604,6 +1767,95 @@ npm run dev
 - Verify IAM permissions
 - Check for resource naming conflicts
 - Review CDK synth output for errors
+
+---
+
+---
+
+## Quick Validation Reference
+
+### Infrastructure Validation Commands
+```bash
+# Check DSQL cluster
+aws dsql get-cluster --identifier grievance-portal-dsql
+
+# Check SSM parameters
+aws ssm get-parameters-by-path --path /grievance-portal/ --recursive
+
+# Check Lambda function
+aws lambda get-function --function-name grievance-portal
+
+# Check API Gateway
+aws apigateway get-rest-apis
+```
+
+### Testing Commands
+```bash
+# Test API health check
+curl https://YOUR_API_ID.execute-api.REGION.amazonaws.com/prod/api/health
+
+# Test Lambda locally
+sam local start-api
+curl http://localhost:3000/api/health
+
+# View Lambda logs
+aws logs tail /aws/lambda/grievance-portal --follow
+
+# Test database connection
+psql $DSQL_URL -c "SELECT version();"
+```
+
+### Monitoring Commands
+```bash
+# Check CloudWatch alarms
+aws cloudwatch describe-alarms --alarm-names grievance-portal-*
+
+# View recent Lambda invocations
+aws lambda get-function --function-name grievance-portal --query 'Configuration.LastModified'
+
+# Check costs
+aws ce get-cost-and-usage --time-period Start=2026-02-01,End=2026-02-07 --granularity DAILY --metrics BlendedCost
+```
+
+### Deployment Commands
+```bash
+# Deploy CDK stacks
+cdk deploy --all
+
+# Trigger CodeBuild
+aws codebuild start-build --project-name grievance-portal-build
+
+# Check pipeline status
+aws codepipeline get-pipeline-state --name grievance-portal-pipeline
+```
+
+---
+
+## Success Criteria Summary
+
+**Phases 1-6 Complete When:**
+- All infrastructure deployed via CDK
+- Lambda function running and accessible via API Gateway
+- CI/CD pipeline automatically deploying from GitHub
+- All validation tests passing
+
+**Phases 7-9 Complete When:**
+- Database migrated with all data intact
+- Monitoring and alarms configured and working
+- Security hardening complete and tested
+- No security vulnerabilities in IAM policies
+
+**Phases 10-13 Complete When:**
+- Costs within expected range ($4-12/month)
+- Local development workflow documented and tested
+- Rollback procedures tested and documented
+- Full end-to-end testing complete
+
+**Production Ready When:**
+- All 13 phases validated
+- Load testing complete (100+ concurrent requests)
+- Disaster recovery plan documented
+- Team trained on deployment and rollback procedures
 
 ---
 
