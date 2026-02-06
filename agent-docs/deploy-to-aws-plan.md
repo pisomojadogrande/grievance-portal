@@ -944,6 +944,8 @@ new cdk.CfnOutput(this, 'GitHubConnectionArn', {
 
 ## Phase 7: Database Migration
 
+**Goal:** Migrate schema and data from Replit to Aurora DSQL
+
 **Validation Criteria:**
 - [ ] DSQL cluster connection successful: `psql $DSQL_URL -c "SELECT version();"`
 - [ ] Schema migration completes: `npm run db:push` succeeds
@@ -1105,6 +1107,8 @@ aws logs tail /aws/lambda/grievance-portal --follow
 
 ## Phase 9: CI/CD Pipeline
 
+**Goal:** Automate deployments from GitHub to AWS Lambda
+
 **Validation Criteria:**
 - [ ] CloudWatch log groups exist: `/aws/lambda/grievance-portal`, `/aws/codebuild/grievance-portal-build`
 - [ ] Lambda logs appear in real-time: `aws logs tail /aws/lambda/grievance-portal --follow`
@@ -1179,7 +1183,23 @@ app.get('/api/health', (req, res) => {
 
 ---
 
-## Phase 9: Security Hardening
+## Phase 10: Monitoring & Security
+
+**Goal:** Production hardening with monitoring and security best practices
+
+**Validation Criteria:**
+- [ ] CloudWatch log groups exist: `/aws/lambda/grievance-portal`, `/aws/codebuild/grievance-portal-build`
+- [ ] Lambda logs appear in real-time: `aws logs tail /aws/lambda/grievance-portal --follow`
+- [ ] Log retention set correctly (1 week)
+- [ ] CloudWatch alarms created and in "OK" state
+- [ ] Test alarm: Trigger condition and verify alarm fires
+- [ ] SNS notifications work (if configured)
+- [ ] Lambda IAM role has minimum required permissions
+- [ ] API Gateway throttling configured
+- [ ] Test throttling: Burst requests return 429
+- [ ] HTTPS enforced on API Gateway
+- [ ] No secrets in CloudWatch logs
+- [ ] Unauthenticated requests to protected endpoints return 401
 
 **Validation Criteria:**
 - [ ] Lambda IAM role has minimum required permissions (principle of least privilege)
@@ -1279,7 +1299,7 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 
 ---
 
-## Phase 10: Cost Optimization
+## Phase 11: Cost Optimization
 
 **Validation Criteria:**
 - [ ] Review AWS Cost Explorer for first week of usage
@@ -1338,153 +1358,22 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 
 ---
 
-## Phase 11: Deployment Checklist
+## Phase 12: Documentation & Rollback
+
+**Goal:** Finalize procedures and test rollback capabilities
 
 **Validation Criteria:**
-- [ ] All pre-deployment checklist items completed
-- [ ] All infrastructure deployment items completed
-- [ ] All application deployment items completed
-- [ ] All data migration items completed
-- [ ] All post-deployment items completed
-- [ ] End-to-end test: Submit complaint through UI
-- [ ] Test payment flow: Complete Stripe payment
-- [ ] Test authentication: Login/logout with Cognito
-- [ ] Test AI features: Generate AI response with Bedrock
-- [ ] Test webhook: Trigger Stripe webhook and verify processing
-- [ ] Load test: Send 100 concurrent requests and verify no errors
-- [ ] Verify all CloudWatch alarms in "OK" state
-- [ ] Document deployment date, versions, and any issues encountered
-
-### 11.1 Pre-Deployment
-
-- [ ] Create AWS account / ensure access
-- [ ] Choose AWS region (recommend us-east-1 for Bedrock/DSQL availability)
-- [ ] Install AWS CDK: `npm install -g aws-cdk`
-- [ ] Bootstrap CDK: `cdk bootstrap aws://ACCOUNT-ID/REGION`
-- [ ] Register domain (optional) or use API Gateway URL
-- [ ] Set up Stripe webhook endpoint (will be API Gateway URL)
-- [ ] Export Replit database
-- [ ] Document current admin users
-
-### 11.2 Infrastructure Deployment (CDK)
-
-- [ ] Create CDK project: `mkdir infrastructure && cd infrastructure && cdk init`
-- [ ] Implement all stacks (Database, Auth, Parameters, Compute, Pipeline)
-- [ ] Review synthesized templates: `cdk synth`
-- [ ] Deploy infrastructure: `cdk deploy --all`
-- [ ] Verify all resources created successfully
-
-### 11.3 Application Deployment
-
-- [ ] Install serverless-express: `npm install @codegenie/serverless-express`
-- [ ] Create Lambda handler (`server/lambda.ts`)
-- [ ] Update Express app to export for Lambda
-- [ ] Refactor code (remove Replit, add Cognito/Bedrock, DSQL compatibility, SSM)
-- [ ] Update schema for DSQL constraints
-- [ ] Create buildspec.yml
-- [ ] Test locally with SAM CLI
-- [ ] Push code to GitHub main branch
-- [ ] Verify CodeBuild triggers and deploys Lambda
-- [ ] Test API Gateway endpoint
-
-### 11.4 Data Migration
-
-- [ ] Run Drizzle migrations on Aurora DSQL
-- [ ] Import data from Replit (in batches if needed)
-- [ ] Migrate admin users to Cognito
-- [ ] Verify data integrity
-
-### 11.5 Post-Deployment
-
-- [ ] Update Stripe webhook URL to API Gateway endpoint
-- [ ] Test Stripe payment flow
-- [ ] Test authentication flow with Cognito
-- [ ] Test AI features (Bedrock)
-- [ ] Verify CloudWatch logs working
-- [ ] Test cold start performance
-- [ ] Document deployment process
-
----
-
-## Phase 12: Local Development Workflow
-
-**Validation Criteria:**
-- [ ] SAM CLI installed: `sam --version` shows version
-- [ ] Local PostgreSQL running: `psql postgresql://localhost:5432/postgres -c "SELECT 1;"`
-- [ ] Local environment variables configured in `.env.local`
-- [ ] Local database migrations succeed: `npm run db:push`
-- [ ] Local SAM API starts: `sam local start-api` runs without errors
-- [ ] Local health check responds: `curl http://localhost:3000/api/health`
-- [ ] Local development server runs: `npm run dev` starts successfully
-- [ ] Hot reload works: Change code and verify auto-reload
-- [ ] Local tests pass: `npm test` succeeds
-- [ ] Local build succeeds: `npm run build && npm run package:lambda`
-- [ ] Can test Lambda locally with sample events
-- [ ] Local debugging works with breakpoints
-
-### 12.1 Development Setup
-
-**One-time setup:**
-```bash
-# Install SAM CLI for local Lambda testing
-brew install aws-sam-cli
-
-# Clone repository
-git clone https://github.com/pisomojadogrande/grievance-portal.git
-cd grievance-portal
-
-# Install dependencies
-npm install
-
-# Create .env.local with development credentials
-cp .env.example .env.local
-
-# Start local PostgreSQL (or use Docker)
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:15
-
-# Run migrations
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres npm run db:push
-
-# Test Lambda locally
-sam local start-api
-
-# Access application
-open http://localhost:3000
-```
-
-### 12.2 Development Workflow
-
-**Iterative development:**
-1. Make code changes locally
-2. Test with `sam local start-api` or `npm run dev`
-3. Commit to feature branch
-4. Push to GitHub
-5. Create PR to main
-6. Merge triggers automatic deployment to AWS Lambda
-
-**Testing before push:**
-- Unit tests: `npm test`
-- Build test: `npm run build && npm run package:lambda`
-- Local Lambda test: `sam local start-api`
-
----
-
-## Phase 13: Rollback Strategy
-
-**Validation Criteria:**
-- [ ] Lambda versions visible: `aws lambda list-versions-by-function` shows multiple versions
-- [ ] Lambda alias configured: `aws lambda get-alias --function-name grievance-portal --name prod`
-- [ ] Test Lambda rollback: Update alias to previous version and verify
-- [ ] Verify rolled-back version works: Test API endpoint
-- [ ] DSQL backup plan configured in AWS Backup
-- [ ] Manual DSQL snapshot created before migration
-- [ ] Test DSQL restore: Create test restore and verify data
-- [ ] CDK rollback tested: `git checkout` previous commit and redeploy
+- [ ] Deployment process documented
+- [ ] Rollback procedures documented and tested
+- [ ] Lambda versions visible: `aws lambda list-versions-by-function`
+- [ ] Lambda rollback tested and verified
+- [ ] DSQL backup plan configured
+- [ ] DSQL restore tested
 - [ ] CloudFormation stack rollback tested (in non-prod environment)
 - [ ] Document rollback procedures and time estimates
 - [ ] Test complete rollback scenario: Lambda + Database + Infrastructure
 
-### 13.1 Lambda Rollback
+### 12.1 Lambda Rollback
 
 **Lambda versions:**
 ```bash
@@ -1500,7 +1389,7 @@ aws lambda update-alias --function-name grievance-portal --name prod --function-
 2. Versions tab → Select previous version
 3. Update alias to point to that version
 
-### 13.2 Database Rollback (Aurora DSQL)
+### 12.2 Database Rollback (Aurora DSQL)
 
 **Aurora DSQL backups:**
 - Use AWS Backup for point-in-time recovery
@@ -1525,7 +1414,7 @@ backupPlan.addSelection('DsqlSelection', {
 });
 ```
 
-### 13.3 Infrastructure Rollback (CDK)
+### 12.3 Infrastructure Rollback (CDK)
 
 **CDK stack rollback:**
 ```bash
@@ -1539,29 +1428,6 @@ cdk deploy --all
 **CodeBuild rollback:**
 - Push a revert commit to main
 - CodeBuild automatically triggers and deploys
-
----
-
-## Phase 14: Future Enhancements
-
-### 14.1 Short-term (1-3 months)
-
-- [ ] Add staging environment (separate Lambda + API Gateway)
-- [ ] Implement Lambda provisioned concurrency (eliminate cold starts)
-- [ ] Add CloudFront CDN for static assets and API caching
-- [ ] Set up custom domain with Route 53
-- [ ] Enable WAF (Web Application Firewall) on API Gateway
-- [ ] Add automated testing in CodeBuild
-
-### 14.2 Long-term (3-6 months)
-
-- [ ] Multi-region DSQL cluster for HA (99.999% availability)
-- [ ] Implement caching with ElastiCache or DynamoDB
-- [ ] Add S3 for file uploads (if needed)
-- [ ] Implement comprehensive monitoring dashboard
-- [ ] Add cost anomaly detection
-- [ ] Implement disaster recovery plan
-- [ ] Expand CDK to include staging environment
 
 ---
 
