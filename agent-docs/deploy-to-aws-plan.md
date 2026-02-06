@@ -67,6 +67,13 @@ Supporting Services:
 
 ## EXECUTION ORDER
 
+**IMPORTANT:** The 12 phases below are numbered and ordered correctly for execution. However, during reorganization, some phase content got mixed up:
+- Phase 6 may contain CI/CD content that belongs in Phase 9
+- Phase 9 may contain monitoring content that belongs in Phase 10
+- Review each phase's content before executing to ensure it matches the phase title
+
+We will clean up the content as we work through each phase.
+
 Phases must be completed in this order for verifiable progress:
 
 1. **Phase 1: Pre-Deployment Setup** - AWS account, tools, prerequisites
@@ -1300,6 +1307,8 @@ dbSecret.addRotationSchedule('RotationSchedule', {
 ---
 
 ## Phase 11: Cost Optimization
+
+**Goal:** Verify costs are within expected range and set up budget alerts
 
 **Validation Criteria:**
 - [ ] Review AWS Cost Explorer for first week of usage
