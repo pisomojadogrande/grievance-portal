@@ -13,3 +13,7 @@ Whenever you (the agent) make a plan or complete a task that is part of a plan, 
 NEVER commit anything without building successfully AND seeing 100% of tests passing.  
 
 The agent should git commit its work.  Before EVERY commit, scan the contents for any hardcoded credentials or identifiers.  These should NEVER get committed.
+
+# Access to AWS account
+
+You have in your environment credentials to a ReadOnly IAM Role in the AWS account.  For any action that requires mutating access to the AWS account, you will need to tell the human what command to run.  But you should use your access to troubleshoot or to validate that resources are configured correctly.  
