@@ -12,7 +12,7 @@ Whenever you (the agent) make a plan or complete a task that is part of a plan, 
 
 NEVER commit anything without building successfully AND seeing 100% of tests passing.  
 
-The agent should git commit its work.  Before EVERY commit, scan the contents for any hardcoded credentials or identifiers.  These should NEVER get committed.
+The agent should git commit its work.  Before EVERY commit, scan the contents for any hardcoded credentials or identifiers.  These should NEVER get committed.  You should also NEVER commit my AWS Account Id.  It has no security value, but I'd prefer not to commit it.  So it should never be hardcoded but instead should be picked up from somewhere that is .gitignored.
 
 # Access to AWS account
 
