@@ -2,18 +2,11 @@ import serverlessExpress from '@codegenie/serverless-express';
 import { initializeApp } from './init';
 
 let cachedHandler: any;
-let appInitialized = false;
 
 async function getApp() {
-  if (appInitialized) {
-    const app = await import('./index');
-    return app.default;
-  }
-  
   // Import and wait for app initialization
   const appModule = await import('./index');
-  await appModule.appReady; // We'll add this export
-  appInitialized = true;
+  await appModule.appReady;
   return appModule.default;
 }
 

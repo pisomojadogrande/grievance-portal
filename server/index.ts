@@ -93,7 +93,9 @@ app.use((req, res, next) => {
 
 // Promise that resolves when app is fully initialized
 export const appReady = (async () => {
+  console.log('[init] Starting app initialization...');
   await registerRoutes(httpServer, app);
+  console.log('[init] Routes registered');
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

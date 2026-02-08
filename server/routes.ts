@@ -19,6 +19,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // === Health Check ===
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+  });
+
   // === Complaints Routes ===
 
   app.post(api.complaints.create.path, async (req, res) => {
