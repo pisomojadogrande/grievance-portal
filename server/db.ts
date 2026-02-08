@@ -1,8 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
+import { AuroraDSQLPool } from "@aws/aurora-dsql-node-postgres-connector";
 import * as schema from "@shared/schema";
-
-const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -10,5 +8,16 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Parse DSQL endpoint from DATABASE_URL
+const url = new URL(process.env.DATABASE_URL);
+const host = url.hostname;
+
+export const pool = new AuroraDSQLPool({
+  host,
+  user: "admin",
+  database: "postgres",
+  max: 3,
+  idleTimeoutMillis: 60000,
+});
+
 export const db = drizzle(pool, { schema });
