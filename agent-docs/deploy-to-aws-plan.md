@@ -240,9 +240,20 @@ aws cognito-idp list-users --user-pool-id $USER_POOL_ID
 
 ---
 
-## Phase 5: Deploy Application ⏳ NOT STARTED
+## Phase 5: Deploy Application ⏳ IN PROGRESS
 
+**Started:** February 8, 2026 22:24 UTC  
 **Goal:** Deploy Lambda function and API Gateway
+
+### Progress Notes
+**2026-02-08 22:24 UTC** - Starting Phase 5 deployment:
+
+#### Checklist for Phase 5 Completion:
+- [x] 5.1: Build and package Lambda (435KB)
+- [x] 5.2: Deploy Compute Stack
+- [x] 5.3: Get API endpoint URL (https://<API_GATEWAY_ID>.execute-api.us-east-1.amazonaws.com/prod/)
+- [ ] 5.4: Test health check endpoint
+- [ ] 5.5: Verify Lambda logs in CloudWatch
 
 ### Validation Criteria
 - [ ] CDK deployment succeeds: `cdk deploy ComputeStack`
