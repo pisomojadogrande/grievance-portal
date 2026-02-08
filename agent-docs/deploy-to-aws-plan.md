@@ -99,6 +99,7 @@ Supporting Services:
 10. **Phase 10: Monitoring & Security** - Production hardening
 11. **Phase 11: Cost Optimization** - Verify costs and set budgets
 12. **Phase 12: Documentation & Rollback** - Finalize procedures
+13. **Phase 13: Unit Testing** - Add test coverage for stability
 
 ---
 
@@ -118,6 +119,7 @@ Phases must be completed in this order for verifiable progress:
 10. **Phase 10: Monitoring & Security** - Production hardening
 11. **Phase 11: Cost Optimization** - Verify costs and set budgets
 12. **Phase 12: Documentation & Rollback** - Finalize procedures
+13. **Phase 13: Unit Testing** - Add test coverage for stability
 
 ---
 
@@ -1245,6 +1247,96 @@ cdk deploy --all
 **CodeBuild rollback:**
 - Push a revert commit to main
 - CodeBuild automatically triggers and deploys
+
+---
+
+## Phase 13: Unit Testing
+
+**Goal:** Add test coverage for critical functionality after migration is stable
+
+**Validation Criteria:**
+- [ ] Testing framework installed (Vitest or Jest)
+- [ ] Test script added to package.json
+- [ ] Unit tests for AWS integration code (SSM, Cognito, Bedrock wrappers)
+- [ ] Unit tests for critical business logic (payment processing, complaint submission)
+- [ ] Test coverage report generated
+- [ ] All tests passing: `npm test`
+- [ ] CI/CD pipeline runs tests before deployment
+
+### 13.1 Install Testing Framework
+
+**Install Vitest (recommended for Vite projects):**
+```bash
+npm install -D vitest @vitest/ui
+```
+
+**Add test script to package.json:**
+```json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
+  }
+}
+```
+
+### 13.2 Priority Test Areas
+
+**High priority (write first):**
+1. SSM parameter loading (`server/aws/ssm.test.ts`)
+2. Cognito JWT verification (`server/auth/cognito.test.ts`)
+3. Bedrock client wrapper (`server/bedrock/client.test.ts`)
+4. Payment processing (`server/routes.test.ts` - Stripe integration)
+5. Complaint submission validation
+
+**Medium priority:**
+6. Database storage layer (`server/storage.test.ts`)
+7. Schema validation
+8. API route handlers
+
+**Low priority:**
+9. Frontend components (after backend is stable)
+10. Integration tests (covered by Phase 8 E2E testing)
+
+### 13.3 Example Test Structure
+
+**SSM Parameter Test:**
+```typescript
+import { describe, it, expect, vi } from 'vitest';
+import { getParameters } from './ssm';
+
+describe('SSM Parameter Loading', () => {
+  it('should load and cache parameters', async () => {
+    const params = await getParameters();
+    expect(params).toHaveProperty('stripe/secret-key');
+    expect(params).toHaveProperty('database/url');
+  });
+
+  it('should return cached parameters on second call', async () => {
+    const params1 = await getParameters();
+    const params2 = await getParameters();
+    expect(params1).toBe(params2); // Same object reference
+  });
+});
+```
+
+### 13.4 Update CI/CD Pipeline
+
+**Update buildspec.yml:**
+```yaml
+phases:
+  pre_build:
+    commands:
+      - npm ci
+      - npm test  # Add test step
+  build:
+    commands:
+      - npm run build
+```
+
+**Estimated Time:** 2-3 days
 
 ---
 
