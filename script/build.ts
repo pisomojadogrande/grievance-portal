@@ -1,6 +1,10 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, copyFile } from "fs/promises";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -77,6 +81,13 @@ async function buildAll() {
     mainFields: ["main", "module"],
     target: "node20",
   });
+
+  // Package Lambda for deployment
+  console.log("packaging lambda...");
+  await rm("lambda.zip", { force: true });
+  await copyFile("dist/lambda.cjs", "dist/index.js");
+  await execAsync("cd dist && zip -r ../lambda.zip index.js");
+  console.log("lambda.zip created");
 }
 
 buildAll().catch((err) => {
