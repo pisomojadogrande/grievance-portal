@@ -123,12 +123,13 @@ Migrate the Replit-based Grievance Portal to AWS using a serverless architecture
 
 ---
 
-## Phase 4: Deploy Core Infrastructure ⏳ NOT STARTED
+## Phase 4: Deploy Core Infrastructure ⏳ IN PROGRESS
 
+**Started:** February 8, 2026 00:58 UTC  
 **Goal:** Deploy DSQL, SSM Parameter Store, and Cognito via CDK
 
 ### Validation Criteria
-- [ ] CDK deployment succeeds: `cdk deploy ParametersStack DatabaseStack AuthStack`
+- [x] CDK deployment succeeds: `npx cdk deploy GrievancePortalParametersStack GrievancePortalDatabaseStack GrievancePortalAuthStack`
 - [ ] DSQL cluster active: `aws dsql get-cluster --identifier grievance-portal-dsql` shows "ACTIVE"
 - [ ] Can connect to DSQL: `psql $DSQL_URL -c "SELECT version();"`
 - [ ] SSM parameters exist: `aws ssm get-parameters-by-path --path /grievance-portal/`
@@ -136,9 +137,23 @@ Migrate the Replit-based Grievance Portal to AWS using a serverless architecture
 - [ ] Cognito user pool exists
 - [ ] Cognito admin user created and can authenticate
 
+### Progress Notes
+**2026-02-08 00:58 UTC** - Deployed three CDK stacks successfully:
+- GrievancePortalParametersStack - SSM parameters created with PLACEHOLDER values
+- GrievancePortalDatabaseStack - SSM parameter for database URL created
+- GrievancePortalAuthStack - Cognito user pool and client created
+
+**NEXT STEPS WHEN RESUMING:**
+1. Validate stack deployments with read-only AWS credentials
+2. Collect Stripe keys from user (sk_test_..., pk_test_..., whsec_...)
+3. Update SSM parameters with real values
+4. Create Aurora DSQL cluster (manual - no CDK support yet)
+5. Create Cognito admin user
+6. Verify all infrastructure is working
+
 ### Tasks
 
-#### 4.1 Deploy Infrastructure Stacks
+#### 4.1 Deploy Infrastructure Stacks ✅ DONE
 ```bash
 cd infrastructure
 
