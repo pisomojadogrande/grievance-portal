@@ -332,10 +332,10 @@ export async function registerRoutes(
       const adminStatus = await isUserAdmin(userId);
       
       // Get admin ID to check if first admin
-      const { db } = await import('./db');
+      const { getDb } = await import('./db');
       const { adminUsers } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
-      const [adminUser] = await db.select().from(adminUsers).where(eq(adminUsers.userId, userId));
+      const [adminUser] = await getDb().select().from(adminUsers).where(eq(adminUsers.userId, userId));
       const isPrimary = adminUser ? await isFirstAdmin(adminUser.id) : false;
       
       return res.json({ 
