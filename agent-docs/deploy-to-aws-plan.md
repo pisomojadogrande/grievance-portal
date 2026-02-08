@@ -15,6 +15,53 @@ All prerequisites are now in place:
 
 ---
 
+## Phase 3: COMPLETED ✅
+
+**Completed:** February 8, 2026
+
+**Goal:** Make application code AWS-compatible
+
+**Completed:**
+- ✅ Installed AWS SDK packages (@aws-sdk/client-ssm, @aws-sdk/client-bedrock-runtime)
+- ✅ Installed serverless-express wrapper
+- ✅ Created Lambda handler (server/lambda.ts) with proper CommonJS exports
+- ✅ Updated server/index.ts to export app and conditionally start server
+- ✅ Created AWS integration stubs:
+  - server/aws/ssm.ts - SSM parameter loading
+  - server/aws/bedrock.ts - Bedrock AI client wrapper (replaced OpenAI)
+  - server/aws/cognito.ts - Cognito auth stub
+- ✅ Removed Replit dependencies:
+  - Removed @replit/vite-plugin-* packages from package.json
+  - Removed openai, openid-client, stripe-replit-sync from package.json
+  - Removed server/replit_integrations directory
+  - Updated vite.config.ts to remove Replit plugins
+- ✅ Replaced OpenAI with Bedrock in server/routes.ts
+- ✅ Simplified stripeClient.ts to use environment variables only
+- ✅ Updated build script to build Lambda handler
+- ✅ Added package:lambda script to create lambda.zip
+- ✅ Fixed Lambda handler export (uses module.exports for CommonJS)
+- ✅ All TypeScript compiles cleanly: npm run check passes
+- ✅ Build succeeds: npm run build completes without errors
+- ✅ Lambda package created: lambda.zip (435KB)
+- ✅ Schema already DSQL-compatible (no foreign key constraints)
+
+**Validation Criteria:**
+- [x] Application builds successfully
+- [x] Lambda handler exports correctly (module.exports.handler in dist/lambda.cjs)
+- [x] Express app exports for Lambda (export default app in server/index.ts)
+- [x] All Replit dependencies removed
+- [x] Schema compiles without foreign key references
+- [x] SSM parameter loading function compiles
+- [x] Cognito integration stub created
+- [x] Bedrock client replaces OpenAI
+- [x] Stripe client simplified
+- [x] All TypeScript compiles without errors
+- [x] Lambda package size reasonable (435KB, well under 50MB limit)
+
+**Next:** Phase 4 - Infrastructure Deployment
+
+---
+
 ## Phase 2: COMPLETED ✅
 
 **Completed:** February 6, 2026

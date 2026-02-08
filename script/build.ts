@@ -59,6 +59,24 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // Build Lambda handler
+  console.log("building lambda handler...");
+  await esbuild({
+    entryPoints: ["server/lambda.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/lambda.cjs",
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: ["@aws-sdk/*", "aws-sdk"], // AWS SDK available in Lambda runtime
+    logLevel: "info",
+    mainFields: ["main", "module"],
+    target: "node20",
+  });
 }
 
 buildAll().catch((err) => {

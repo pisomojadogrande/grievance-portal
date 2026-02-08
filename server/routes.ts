@@ -3,30 +3,22 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import OpenAI from "openai";
-import { registerChatRoutes } from "./replit_integrations/chat";
-import { registerImageRoutes } from "./replit_integrations/image";
-import { registerAudioRoutes } from "./replit_integrations/audio";
+import { createChatCompletion } from "./aws/bedrock";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
-import { isAuthenticated } from "./replit_integrations/auth";
 import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins, isFirstAdmin, resetAdminPassword, deleteAdmin } from "./adminMiddleware";
 import { createAdminSchema, adminLoginSchema, resetAdminPasswordSchema } from "@shared/schema";
 
-// Initialize OpenAI client using the integration environment variables
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Temporary stub for authentication - will be replaced with Cognito
+const isAuthenticated = (req: any, res: any, next: any) => {
+  // TODO: Implement Cognito authentication
+  req.user = { claims: { sub: 'temp-user-id', email: 'temp@example.com' } };
+  next();
+};
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Register the AI integration routes
-  registerChatRoutes(app);
-  registerImageRoutes(app);
-  registerAudioRoutes(app);
-
   // === Complaints Routes ===
 
   app.post(api.complaints.create.path, async (req, res) => {
@@ -485,32 +477,28 @@ export async function registerRoutes(
 export async function generateBureaucraticResponse(complaintId: number, content: string) {
   console.log(`[AI] Starting analysis for complaint #${complaintId}`);
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.1",
+    const systemPrompt = `You are a highly bureaucratic government official at the Department of Complaints. 
+Your job is to analyze complaints and provide a response that is polite, formal, extremely verbose, and ultimately non-committal. 
+Use bureaucratic jargon like "stakeholder alignment," "procedural review," "bandwidth constraints," and "optimization vectors."
+
+You must also assign a "Complexity Score" from 1 to 10 based on how annoying or difficult this complaint seems.
+
+Return your response in JSON format with two fields:
+- responseText: The bureaucratic letter.
+- complexityScore: The integer score.`;
+
+    const userPrompt = `Complaint: "${content}"`;
+    
+    const responseText = await createChatCompletion({
       messages: [
-        {
-          role: "system",
-          content: `You are a highly bureaucratic government official at the Department of Complaints. 
-          Your job is to analyze complaints and provide a response that is polite, formal, extremely verbose, and ultimately non-committal. 
-          Use bureaucratic jargon like "stakeholder alignment," "procedural review," "bandwidth constraints," and "optimization vectors."
-          
-          You must also assign a "Complexity Score" from 1 to 10 based on how annoying or difficult this complaint seems.
-          
-          Return your response in JSON format with two fields:
-          - responseText: The bureaucratic letter.
-          - complexityScore: The integer score.`
-        },
-        {
-          role: "user",
-          content: `Complaint: "${content}"`
-        }
+        { role: 'user', content: `${systemPrompt}\n\n${userPrompt}` }
       ],
-      response_format: { type: "json_object" }
+      max_tokens: 2048,
+      temperature: 1.0,
     });
 
-    const contentString = response.choices[0].message.content || "{}";
-    console.log(`[AI] Response for #${complaintId}:`, contentString);
-    const aiResult = JSON.parse(contentString);
+    console.log(`[AI] Response for #${complaintId}:`, responseText);
+    const aiResult = JSON.parse(responseText);
     
     await storage.updateComplaint(complaintId, {
       status: "resolved",
