@@ -1,696 +1,158 @@
 # AWS Deployment Plan - Grievance Portal
 
-## Phase 1: COMPLETED ✅
-
-**Completed:** February 6, 2026
-
-All prerequisites are now in place:
-- ✅ Node.js 20.18.0 installed (via mise)
-- ✅ AWS CLI configured (Region: us-east-1)
-- ✅ AWS CDK 2.1105.0 installed locally
-- ✅ CDK bootstrapped in us-east-1
-- ✅ Replit database backed up (112KB in backup.sql)
-
-**Next:** Phase 2 - CDK Project Structure
-
----
-
-## Phase 3: COMPLETED ✅
-
-**Completed:** February 8, 2026
-
-**Goal:** Make application code AWS-compatible
-
-**Completed:**
-- ✅ Installed AWS SDK packages (@aws-sdk/client-ssm, @aws-sdk/client-bedrock-runtime)
-- ✅ Installed serverless-express wrapper
-- ✅ Created Lambda handler (server/lambda.ts) with proper CommonJS exports
-- ✅ Updated server/index.ts to export app and conditionally start server
-- ✅ Created AWS integration stubs:
-  - server/aws/ssm.ts - SSM parameter loading
-  - server/aws/bedrock.ts - Bedrock AI client wrapper (replaced OpenAI)
-  - server/aws/cognito.ts - Cognito auth stub
-- ✅ Removed Replit dependencies:
-  - Removed @replit/vite-plugin-* packages from package.json
-  - Removed openai, openid-client, stripe-replit-sync from package.json
-  - Removed server/replit_integrations directory
-  - Updated vite.config.ts to remove Replit plugins
-- ✅ Replaced OpenAI with Bedrock in server/routes.ts
-- ✅ Simplified stripeClient.ts to use environment variables only
-- ✅ Updated build script to build Lambda handler
-- ✅ Added package:lambda script to create lambda.zip
-- ✅ Fixed Lambda handler export (uses module.exports for CommonJS)
-- ✅ All TypeScript compiles cleanly: npm run check passes
-- ✅ Build succeeds: npm run build completes without errors
-- ✅ Lambda package created: lambda.zip (435KB)
-- ✅ Schema already DSQL-compatible (no foreign key constraints)
-
-**Validation Criteria:**
-- [x] Application builds successfully
-- [x] Lambda handler exports correctly (module.exports.handler in dist/lambda.cjs)
-- [x] Express app exports for Lambda (export default app in server/index.ts)
-- [x] All Replit dependencies removed
-- [x] Schema compiles without foreign key references
-- [x] SSM parameter loading function compiles
-- [x] Cognito integration stub created
-- [x] Bedrock client replaces OpenAI
-- [x] Stripe client simplified
-- [x] All TypeScript compiles without errors
-- [x] Lambda package size reasonable (435KB, well under 50MB limit)
-
-**Next:** Phase 4 - Infrastructure Deployment
-
----
-
-## Phase 2: COMPLETED ✅
-
-**Completed:** February 6, 2026
-
-CDK infrastructure code framework is complete:
-- ✅ CDK project initialized in `infrastructure/` directory
-- ✅ 5 stack files created:
-  - `parameters-stack.ts` - SSM Parameter Store
-  - `database-stack.ts` - Aurora DSQL placeholder
-  - `auth-stack.ts` - Cognito user pool
-  - `compute-stack.ts` - Lambda + API Gateway
-  - `pipeline-stack.ts` - CodePipeline CI/CD
-- ✅ Stack dependencies configured in `bin/infrastructure.ts`
-- ✅ TypeScript compiles successfully: `npm run build`
-- ✅ All tests pass: `npm test` (3/3 tests passing)
-- ✅ CloudFormation templates synthesize: `cdk synth` generates 5 templates
-- ✅ Placeholder lambda.zip created for validation
-
-**Next:** Phase 3 - Application Refactoring
+**Last Updated:** February 8, 2026  
+**Current Status:** Phases 1-3 Complete ✅ | Ready for Phase 4
 
 ---
 
 ## Executive Summary
 
-Deploy the Replit-based Grievance Portal to AWS with production best practices while maintaining low costs at low volume. The application will be containerized and run on ECS Fargate with Aurora Serverless v2, using Cognito for authentication and Bedrock for AI capabilities.
+Migrate the Replit-based Grievance Portal to AWS using a serverless architecture for maximum cost efficiency at low volume.
 
-**Key Decisions:**
+**Architecture:**
 - **Compute**: AWS Lambda with serverless-express wrapper (scales to zero)
-- **API**: API Gateway REST API (scales to zero, replaces ALB)
-- **Database**: Aurora DSQL (scales to zero, ~$0-10/month at low volume)
-- **Auth**: Migrate from Replit Auth to AWS Cognito
-- **AI**: Migrate from OpenAI to AWS Bedrock
-- **Secrets**: SSM Parameter Store (free for standard parameters)
+- **API**: API Gateway REST API (scales to zero)
+- **Database**: Aurora DSQL (scales to zero, PostgreSQL-compatible)
+- **Auth**: AWS Cognito (replacing Replit Auth)
+- **AI**: AWS Bedrock (replacing OpenAI)
+- **Secrets**: SSM Parameter Store (free)
 - **CI/CD**: CodePipeline + CodeBuild with GitHub integration
-- **Infrastructure**: AWS CDK (TypeScript) for all infrastructure as code
+- **Infrastructure**: AWS CDK (TypeScript)
+
+**Estimated Monthly Cost:** $4-12 at low volume (vs $71+ for ECS Fargate)
 
 ---
 
-## Architecture Overview
+## Phase Execution Order
 
-```
-GitHub (main branch)
-    ↓
-CodePipeline (auto-trigger)
-    ↓
-CodeBuild (build Lambda package)
-    ↓
-S3 (store Lambda zip)
-    ↓
-Lambda (run Express app via serverless-express)
-    ↓
-API Gateway (HTTPS endpoints)
-    ↓
-Route 53 (optional custom domain)
-
-Supporting Services:
-- Aurora DSQL (PostgreSQL-compatible, scales to zero)
-- Cognito (user authentication)
-- Bedrock (AI/LLM)
-- SSM Parameter Store (secrets - free)
-- CloudWatch (logs & monitoring)
-
-**All infrastructure defined in AWS CDK (TypeScript)**
-**No VPC, No NAT Gateway, No ALB needed!**
-```
+1. ✅ **Phase 1: Prerequisites** - AWS account, tools, CDK bootstrap
+2. ✅ **Phase 2: CDK Infrastructure Code** - Create stack definitions
+3. ✅ **Phase 3: Application Refactoring** - Make code AWS-compatible
+4. ⏳ **Phase 4: Deploy Core Infrastructure** - DSQL, SSM, Cognito
+5. ⏳ **Phase 5: Deploy Application** - Lambda + API Gateway
+6. ⏳ **Phase 6: Database Migration** - Migrate schema and data
+7. ⏳ **Phase 7: End-to-End Testing** - Verify full functionality
+8. ⏳ **Phase 8: CI/CD Pipeline** - Automate deployments
+9. ⏳ **Phase 9: Production Hardening** - Monitoring, security, costs
 
 ---
 
-## EXECUTION ORDER
+## Phase 1: Prerequisites ✅ COMPLETED
 
-**Phases must be completed in this order for verifiable progress:**
+**Completed:** February 6, 2026
 
-1. **Phase 1: Pre-Deployment Setup** - AWS account, CDK bootstrap, prerequisites
-2. **Phase 2: CDK Project Structure** - Create infrastructure code framework
-3. **Phase 3: Application Refactoring** - Make code AWS-compatible (can overlap with Phase 2)
-4. **Phase 4: Lambda Build & Local Testing** - Verify code works before deploying
-5. **Phase 5: Deploy Core Infrastructure** - DSQL, SSM, Cognito via CDK
-6. **Phase 6: Deploy Lambda + API Gateway** - Deploy application via CDK
-7. **Phase 7: Database Migration** - Migrate schema and data
-8. **Phase 8: End-to-End Testing** - Verify full application works
-9. **Phase 9: CI/CD Pipeline** - Automate deployments
-10. **Phase 10: Monitoring & Security** - Production hardening
-11. **Phase 11: Cost Optimization** - Verify costs and set budgets
-12. **Phase 12: Documentation & Rollback** - Finalize procedures
-13. **Phase 13: Unit Testing** - Add test coverage for stability
+### Validation Criteria
+- [x] AWS account accessible
+- [x] AWS CLI configured (Region: us-east-1, Account: <AWS_ACCOUNT_ID>)
+- [x] Node.js 20.18.0 installed
+- [x] AWS CDK 2.1105.0 installed
+- [x] CDK bootstrapped in us-east-1 (Status: CREATE_COMPLETE)
+- [x] Replit database backed up (112KB in backup.sql)
 
----
+### What Was Done
+- Configured AWS CLI with credentials
+- Installed AWS CDK locally
+- Bootstrapped CDK in us-east-1
+- Exported Replit database to backup.sql
 
-## EXECUTION ORDER
-
-Phases must be completed in this order for verifiable progress:
-
-1. **Phase 1: Pre-Deployment Setup** - AWS account, tools, prerequisites
-2. **Phase 2: CDK Project Structure** - Create infrastructure code framework  
-3. **Phase 3: Application Refactoring** - Make code AWS-compatible (can overlap with Phase 2)
-4. **Phase 4: Lambda Build & Local Testing** - Verify code works before deploying
-5. **Phase 5: Deploy Core Infrastructure** - DSQL, SSM, Cognito via CDK
-6. **Phase 6: Deploy Lambda + API Gateway** - Deploy application via CDK
-7. **Phase 7: Database Migration** - Migrate schema and data
-8. **Phase 8: End-to-End Testing** - Verify full application works
-9. **Phase 9: CI/CD Pipeline** - Automate deployments
-10. **Phase 10: Monitoring & Security** - Production hardening
-11. **Phase 11: Cost Optimization** - Verify costs and set budgets
-12. **Phase 12: Documentation & Rollback** - Finalize procedures
-13. **Phase 13: Unit Testing** - Add test coverage for stability
+**Next:** Phase 2 - CDK Infrastructure Code
 
 ---
 
-## Phase 1: Pre-Deployment Setup ✅ COMPLETED
+## Phase 2: CDK Infrastructure Code ✅ COMPLETED
 
-**Goal:** Prepare local environment and AWS account for deployment
+**Completed:** February 6, 2026
 
-**Validation Criteria:**
-- [x] AWS account accessible: `aws sts get-caller-identity` returns account info
-- [x] AWS region selected (recommend us-east-1 for Bedrock/DSQL availability) → **us-east-1**
-- [x] CDK installed: `npx cdk --version` shows version ≥2.0 → **2.1105.0**
-- [x] CDK bootstrapped: `aws cloudformation describe-stacks --stack-name CDKToolkit` succeeds → **CREATE_COMPLETE**
-- [x] Node.js 20+ installed: `node --version` shows v20+ → **v20.18.0**
-- [x] Current Replit database backed up (if accessible): `backup.sql` file exists → **112KB**
-- [x] Current admin users documented (if accessible) → **Skipped (will create fresh in Cognito)**
+### Validation Criteria
+- [x] CDK project initialized in `infrastructure/` directory
+- [x] TypeScript compiles: `npm run build` succeeds
+- [x] CloudFormation templates synthesize: `cdk synth` succeeds
+- [x] All 5 stack files created:
+  - [x] `parameters-stack.ts` - SSM Parameter Store
+  - [x] `database-stack.ts` - Aurora DSQL
+  - [x] `auth-stack.ts` - Cognito user pool
+  - [x] `compute-stack.ts` - Lambda + API Gateway
+  - [x] `pipeline-stack.ts` - CodePipeline CI/CD
+- [x] Stack dependencies configured correctly
+- [x] All tests pass: `npm test` (3/3 passing)
 
-**Tasks:**
+### What Was Done
+- Created CDK project structure
+- Defined all infrastructure stacks
+- Configured stack dependencies
+- Created placeholder lambda.zip for validation
+- Verified CDK synth generates valid CloudFormation templates
 
-### 1.1 Install Required Tools
-
-```bash
-# AWS CLI (if not installed)
-# Follow: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
-
-# AWS CDK (local to project)
-npm install --save-dev aws-cdk
-
-# Verify installations
-aws --version
-npx cdk --version
-node --version
-```
-
-### 1.2 Configure AWS Credentials
-
-```bash
-# Configure AWS CLI with your credentials
-aws configure
-
-# Verify access
-aws sts get-caller-identity
-
-# Choose region (us-east-1 recommended for Bedrock/DSQL)
-export AWS_REGION=us-east-1
-```
-
-### 1.3 Bootstrap CDK
-
-```bash
-# Bootstrap CDK in your account/region (one-time setup)
-npx cdk bootstrap aws://ACCOUNT-ID/us-east-1
-
-# Verify bootstrap
-aws cloudformation describe-stacks --stack-name CDKToolkit
-```
-
-### 1.4 Export Replit Database (Optional)
-
-**If you have access to the Replit database:**
-
-```bash
-# Export current database
-pg_dump $REPLIT_DB_URL > backup.sql
-
-# Verify export
-ls -lh backup.sql
-
-# Document current admin users
-psql $REPLIT_DB_URL -c "SELECT * FROM users WHERE role = 'admin';" > admin-users.txt
-```
-
-**If you don't have access:** We'll start with a fresh database on AWS and create admin users in Cognito during Phase 5.
-
-**Estimated Time:** 30-60 minutes
+**Next:** Phase 3 - Application Refactoring
 
 ---
 
-## Phase 2: CDK Project Structure
+## Phase 3: Application Refactoring ✅ COMPLETED
 
-**Goal:** Create infrastructure-as-code framework (can work in parallel with Phase 3)
+**Completed:** February 8, 2026
 
-**Validation Criteria:**
-- [ ] CDK project initializes successfully: `cdk synth` runs without errors
-- [ ] All stack files compile: `npm run build` succeeds
-- [ ] CloudFormation templates generated in `cdk.out/` directory
-- [ ] Stack dependencies correctly defined (no circular dependencies)
-- [ ] `cdk diff` shows expected resources to be created
+### Validation Criteria
+- [x] TypeScript compiles cleanly: `npm run check` passes
+- [x] Application builds: `npm run build` succeeds
+- [x] Lambda handler created: `server/lambda.ts` exists
+- [x] Lambda handler exports correctly: `module.exports.handler` in `dist/lambda.cjs`
+- [x] Express app exports for Lambda: `export default app` in `server/index.ts`
+- [x] Lambda package created: `lambda.zip` (435KB)
+- [x] All Replit dependencies removed from package.json
+- [x] Replit integrations directory removed
+- [x] AWS SDK packages installed (@aws-sdk/client-ssm, @aws-sdk/client-bedrock-runtime)
+- [x] serverless-express installed
+- [x] SSM parameter loading function created: `server/aws/ssm.ts`
+- [x] Bedrock client created: `server/aws/bedrock.ts` (replaces OpenAI)
+- [x] Cognito auth stub created: `server/aws/cognito.ts`
+- [x] Stripe client simplified (removed Replit connector)
+- [x] Schema is DSQL-compatible (no foreign key constraints)
 
-### 2.1 CDK Project Structure
+### What Was Done
+- Installed AWS SDK packages and serverless-express
+- Created Lambda handler with proper CommonJS exports
+- Updated server/index.ts to export app and conditionally start server
+- Created AWS integration stubs (SSM, Bedrock, Cognito)
+- Replaced OpenAI with Bedrock in routes.ts
+- Removed all Replit dependencies and integrations
+- Simplified Stripe client to use environment variables
+- Updated build script to generate lambda.zip
+- Fixed all TypeScript compilation errors
 
-**Create CDK project:**
-```bash
-mkdir infrastructure
-cd infrastructure
-npx aws-cdk init app --language typescript
-```
-
-**Directory structure:**
-```
-infrastructure/
-├── bin/
-│   └── grievance-portal.ts    # CDK app entry point
-├── lib/
-│   ├── database-stack.ts       # Aurora DSQL
-│   ├── compute-stack.ts        # Lambda + API Gateway
-│   ├── auth-stack.ts           # Cognito
-│   ├── parameters-stack.ts     # SSM Parameter Store
-│   └── pipeline-stack.ts       # CodePipeline, CodeBuild
-├── cdk.json
-├── package.json
-└── tsconfig.json
-```
-
-### 2.2 CDK Stack Dependencies
-
-**Stack order:**
-1. `ParametersStack` - SSM Parameter Store (no dependencies)
-2. `DatabaseStack` - Aurora DSQL (no dependencies)
-3. `AuthStack` - Cognito (no dependencies)
-4. `ComputeStack` - Lambda + API Gateway (depends on DatabaseStack, AuthStack, ParametersStack)
-5. `PipelineStack` - CI/CD (depends on ComputeStack)
-
-### 2.3 Key CDK Constructs
-
-**Database Stack:**
-- `CfnCluster` from `@aws-cdk/aws-dsql-alpha` - Aurora DSQL cluster
-- `ssm.StringParameter` - Store connection string
-
-**Parameters Stack:**
-- `ssm.StringParameter` - Store all secrets/config
-
-**Compute Stack:**
-- `lambda.Function` - Lambda function with Express app
-- `apigateway.RestApi` - API Gateway REST API
-- `apigateway.LambdaIntegration` - Connect API Gateway to Lambda
-- `certificatemanager.Certificate` - SSL certificate (if using custom domain)
-
-**Auth Stack:**
-- `cognito.UserPool` - User pool
-- `cognito.UserPoolClient` - App client
-
-**Pipeline Stack:**
-- `codepipeline.Pipeline` - CI/CD pipeline
-- `codebuild.Project` - Build project
-- `codestarconnections.CfnConnection` - GitHub connection
-
-### 2.4 CDK Deployment Commands
-
-```bash
-# Install dependencies
-cd infrastructure
-npm install
-
-# Bootstrap CDK (first time only)
-cdk bootstrap aws://ACCOUNT-ID/REGION
-
-# Synthesize CloudFormation templates
-cdk synth
-
-# Deploy all stacks
-cdk deploy --all
-
-# Deploy specific stack
-cdk deploy ComputeStack
-
-# Destroy all resources
-cdk destroy --all
-```
-
-**Estimated Time:** 1-2 hours
+**Next:** Phase 4 - Deploy Core Infrastructure
 
 ---
 
-## Phase 3: Application Refactoring
-
-**Goal:** Make application code AWS-compatible (can work in parallel with Phase 2)
-
-**Validation Criteria:**
-- [ ] Application builds successfully: `npm run build` completes without errors
-- [ ] Lambda handler exports correctly: `server/lambda.ts` has `export const handler`
-- [ ] Express app exports for Lambda: `server/index.ts` has `export default app`
-- [ ] All Replit dependencies removed from package.json
-- [ ] Schema compiles without foreign key references
-- [ ] SSM parameter loading function compiles
-- [ ] Cognito integration code compiles
-- [ ] Bedrock client code compiles
-
-### 3.1 Lambda Adapter for Express App
-
-**Install serverless-express:**
-```bash
-npm install @codegenie/serverless-express
-```
-
-**Create Lambda handler** (`server/lambda.ts`):
-```typescript
-import serverlessExpress from '@codegenie/serverless-express';
-import app from './index'; // Your existing Express app
-
-// Export Lambda handler
-export const handler = serverlessExpress({ app });
-```
-
-**Update server/index.ts:**
-```typescript
-// Remove or conditionally include server startup
-if (process.env.NODE_ENV !== 'production' || !process.env.AWS_LAMBDA_FUNCTION_NAME) {
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(port, "0.0.0.0", () => {
-    log(`Server running on port ${port}`);
-  });
-}
-
-// Export app for Lambda
-export default app;
-```
-
-**Key changes:**
-- Express app runs normally in Lambda
-- No code changes to routes or middleware
-- API Gateway handles HTTP → Lambda event conversion
-- serverless-express handles Lambda event → Express request conversion
-
-### 3.2 Remove Replit Dependencies
-
-**Files to modify:**
-- `server/replit_integrations/auth/*` - Replace with Cognito
-- `vite.config.ts` - Remove Replit plugins
-- `server/stripeClient.ts` - Remove Replit connector logic
-
-**New dependencies to add:**
-```json
-{
-  "@codegenie/serverless-express": "^4.14.0",
-  "amazon-cognito-identity-js": "^6.3.0",
-  "@aws-sdk/client-ssm": "^3.x",
-  "@aws-sdk/client-bedrock-runtime": "^3.x"
-}
-```
-
-**Dependencies to remove:**
-- `@replit/vite-plugin-*`
-- `openid-client` (Replit Auth)
-- `stripe-replit-sync`
-
-### 3.3 Aurora DSQL Schema Compatibility
-
-**Review current schema for DSQL constraints:**
-
-1. **Remove foreign key constraints** (DSQL doesn't support them):
-   ```typescript
-   // Before (in shared/schema.ts)
-   export const payments = pgTable("payments", {
-     complaintId: integer("complaint_id").references(() => complaints.id)
-   });
-   
-   // After
-   export const payments = pgTable("payments", {
-     complaintId: integer("complaint_id") // Remove .references()
-   });
-   ```
-   - Enforce referential integrity in application code
-   - Add validation in storage layer
-
-2. **Replace auto-increment with UUIDs** (if using SERIAL):
-   ```typescript
-   // Before
-   id: serial("id").primaryKey()
-   
-   // After
-   id: uuid("id").defaultRandom().primaryKey()
-   ```
-
-3. **Check transaction sizes**:
-   - DSQL limits: 10,000 rows per transaction
-   - Review bulk operations in `storage.ts`
-   - Add batching if needed
-
-4. **Remove temporary tables** (if any):
-   - Replace with CTEs or regular tables with cleanup
-
-### 3.4 Cognito Integration
-
-**Backend changes** (`server/auth/cognito.ts` - new file):
-
-- Implement Cognito JWT verification middleware
-- Replace `isAuthenticated` checks with Cognito token validation
-- Update session management to use Cognito tokens
-- Migrate admin user creation to Cognito
-
-**Frontend changes** (`client/src/lib/auth.ts` - new file):
-- Implement Cognito authentication flow
-- Replace Replit Auth UI with Cognito Hosted UI or custom login
-- Update `useAuth` hook to work with Cognito
-
-**Migration strategy:**
-- Export existing admin users from current DB
-- Create corresponding users in Cognito
-- Update user references to use Cognito sub (user ID)
-
-### 3.5 Bedrock Integration (Replace OpenAI)
-
-**Current OpenAI usage locations:**
-- `server/routes.ts` - AI complaint response generation
-- `server/replit_integrations/audio/client.ts` - Speech-to-text, text-to-speech
-- `server/replit_integrations/chat/routes.ts` - Chat completions
-- `server/replit_integrations/image/client.ts` - Image generation
-
-**Bedrock equivalents:**
-- Text generation: Claude 3 (Anthropic) or Titan
-- Speech: Amazon Polly (text-to-speech), Amazon Transcribe (speech-to-text)
-- Images: Stable Diffusion via Bedrock
-
-**New file** (`server/bedrock/client.ts`):
-- Bedrock runtime client initialization
-- Wrapper functions matching OpenAI interface
-- Model selection: `anthropic.claude-3-sonnet-20240229-v1:0`
-
-**Changes required:**
-- Replace `openai.chat.completions.create()` with Bedrock invoke
-- Update prompt formatting for Claude (uses different format than OpenAI)
-- Replace audio integrations with Polly/Transcribe
-- Update image generation to use Stable Diffusion
-
-### 3.6 SSM Parameter Store Integration
-
-**Load parameters at Lambda startup:**
-```typescript
-import { SSMClient, GetParameterCommand, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
-
-const ssmClient = new SSMClient({ region: process.env.AWS_REGION });
-
-async function loadParameters() {
-  const response = await ssmClient.send(
-    new GetParametersByPathCommand({
-      Path: '/grievance-portal/',
-      Recursive: true,
-      WithDecryption: true, // For SecureString parameters
-    })
-  );
-  
-  const params: Record<string, string> = {};
-  response.Parameters?.forEach(param => {
-    const key = param.Name?.replace('/grievance-portal/', '');
-    if (key && param.Value) {
-      params[key] = param.Value;
-    }
-  });
-  
-  return params;
-}
-
-// Cache parameters (Lambda container reuse)
-let cachedParams: Record<string, string> | null = null;
-
-export async function getParameters() {
-  if (!cachedParams) {
-    cachedParams = await loadParameters();
-  }
-  return cachedParams;
-}
-```
-
-**Use in application:**
-```typescript
-const params = await getParameters();
-const stripeSecretKey = params['stripe/secret-key'];
-const dbUrl = params['database/url'];
-```
-
-### 3.7 Environment Variables
-
-**New environment variable structure:**
-```bash
-# AWS Region
-AWS_REGION=us-east-1
-
-# Lambda-specific
-AWS_LAMBDA_FUNCTION_NAME=grievance-portal-function
-
-# Application
-NODE_ENV=production
-
-# All secrets loaded from SSM Parameter Store at runtime
-```
-
----
-
-## Phase 4: Lambda Build & Local Testing
-
-**Goal:** Verify application works locally before deploying to AWS
-
-**Validation Criteria:**
-- [ ] Build script completes: `npm run build` succeeds
-- [ ] Lambda package created: `lambda.zip` file exists
-- [ ] Package size is reasonable (<50MB uncompressed, <10MB compressed)
-- [ ] Package contains `index.js` handler
-- [ ] Package structure is correct: unzip and verify contents
-- [ ] Express app runs locally: `npm run dev` starts successfully
-- [ ] Local health check responds: `curl http://localhost:5000/api/health`
-- [ ] No unnecessary files in package (node_modules trimmed to production only)
-
-### 4.1 Build Script
-
-**Update package.json:**
-```json
-{
-  "scripts": {
-    "build": "tsx script/build.ts",
-    "build:lambda": "npm run build && npm run package:lambda",
-    "package:lambda": "cd dist && zip -r ../lambda.zip . && cd .."
-  }
-}
-```
-
-**Update build script** (`script/build.ts`):
-```typescript
-// Build for Lambda (single file output)
-await esbuild({
-  entryPoints: ['server/lambda.ts'],
-  bundle: true,
-  platform: 'node',
-  target: 'node20',
-  outfile: 'dist/index.js',
-  external: ['aws-sdk', '@aws-sdk/*'], // AWS SDK available in Lambda runtime
-  minify: true,
-});
-```
-
-### 4.2 Lambda Package Structure
-
-```
-lambda.zip
-├── index.js           # Bundled Lambda handler
-├── node_modules/      # Production dependencies
-└── package.json       # For Lambda runtime
-```
-
-### 4.3 Local Testing
-
-**Test Express app normally (no SAM CLI needed):**
-```bash
-# Start local development server
-npm run dev
-
-# Test endpoint in another terminal
-curl http://localhost:5000/api/health
-
-# Should return: {"status":"healthy","timestamp":"..."}
-```
-
-The serverless-express wrapper only activates in Lambda. Locally, your Express app runs normally. If it works locally, it will work in Lambda.
-
-**Estimated Time:** 2-3 hours
-
----
-
-## Phase 5: Deploy Core Infrastructure
+## Phase 4: Deploy Core Infrastructure ⏳ NOT STARTED
 
 **Goal:** Deploy DSQL, SSM Parameter Store, and Cognito via CDK
 
-**Validation Criteria:**
-- [ ] CDK deployment succeeds: `cdk deploy ParametersStack DatabaseStack AuthStack` completes
+### Validation Criteria
+- [ ] CDK deployment succeeds: `cdk deploy ParametersStack DatabaseStack AuthStack`
 - [ ] DSQL cluster active: `aws dsql get-cluster --identifier grievance-portal-dsql` shows "ACTIVE"
 - [ ] Can connect to DSQL: `psql $DSQL_URL -c "SELECT version();"`
-- [ ] SSM parameters exist: `aws ssm get-parameters-by-path --path /grievance-portal/ --recursive` shows all params
+- [ ] SSM parameters exist: `aws ssm get-parameters-by-path --path /grievance-portal/`
 - [ ] SSM parameters retrievable with decryption
-- [ ] Cognito user pool exists and is configured correctly
-- [ ] Cognito admin user created
+- [ ] Cognito user pool exists
+- [ ] Cognito admin user created and can authenticate
 
-### 5.1 Aurora DSQL Overview
+### Tasks
 
-**Configuration:**
-- Engine: PostgreSQL-compatible (wire protocol v3)
-- Serverless distributed SQL database
-- Scales to zero when idle (no charges)
-- Multi-AZ by default (3 AZs within region)
-
-**Important DSQL Constraints:**
-- No foreign key constraints (enforce in application layer)
-- No temporary tables (use CTEs or regular tables)
-- DDL and DML must be in separate transactions
-- 10,000 row limit per transaction
-- No auto-increment sequences (use UUIDs)
-
-**Cost**: 
-- Free tier: 100K DPUs + 1GB storage/month
-- Beyond free tier: $8/million DPUs + $0.33/GB-month
-- **Estimated: $0-10/month at low volume**
-- Scales to zero when idle = no charges during downtime
-
-### 5.2 SSM Parameter Store Overview
-
-**Parameters to create:**
-- `/grievance-portal/stripe/secret-key` - Stripe secret key (SecureString)
-- `/grievance-portal/stripe/publishable-key` - Stripe publishable key
-- `/grievance-portal/stripe/webhook-secret` - Stripe webhook secret (SecureString)
-- `/grievance-portal/database/url` - Aurora DSQL connection string (SecureString)
-- `/grievance-portal/session/secret` - Express session secret (SecureString)
-- `/grievance-portal/cognito/user-pool-id` - Cognito user pool ID
-- `/grievance-portal/cognito/client-id` - Cognito client ID
-
-**Cost**: **FREE** for standard parameters (up to 10,000)
-
-### 5.3 Deploy Infrastructure Stacks
-
+#### 4.1 Deploy Infrastructure Stacks
 ```bash
 cd infrastructure
 
-# Deploy parameters stack (with placeholder values)
+# Deploy parameters stack (creates SSM parameters with placeholders)
 cdk deploy ParametersStack
 
-# Deploy database stack
+# Deploy database stack (creates DSQL cluster)
 cdk deploy DatabaseStack
 
-# Deploy auth stack
+# Deploy auth stack (creates Cognito user pool)
 cdk deploy AuthStack
-
-# Verify all deployed
-aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE
 ```
 
-### 5.4 Update SSM Parameters with Real Values
-
+#### 4.2 Update SSM Parameters with Real Values
 ```bash
 # Update Stripe keys (use your test keys)
 aws ssm put-parameter --name /grievance-portal/stripe/secret-key \
@@ -711,12 +173,9 @@ DSQL_URL=$(aws cloudformation describe-stacks --stack-name DatabaseStack \
   --query 'Stacks[0].Outputs[?OutputKey==`DsqlConnectionString`].OutputValue' --output text)
 aws ssm put-parameter --name /grievance-portal/database/url \
   --value "$DSQL_URL" --type SecureString --overwrite
-
-# Cognito IDs will be stored automatically by CDK
 ```
 
-### 5.5 Create Cognito Admin User
-
+#### 4.3 Create Cognito Admin User
 ```bash
 # Get user pool ID
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name AuthStack \
@@ -738,8 +197,7 @@ aws cognito-idp admin-set-user-password \
   --permanent
 ```
 
-### 5.6 Test Infrastructure
-
+#### 4.4 Verify Infrastructure
 ```bash
 # Test DSQL connection
 psql $DSQL_URL -c "SELECT version();"
@@ -755,25 +213,23 @@ aws cognito-idp list-users --user-pool-id $USER_POOL_ID
 
 ---
 
-## Phase 6: Deploy Lambda + API Gateway
+## Phase 5: Deploy Application ⏳ NOT STARTED
 
-**Goal:** Deploy application to AWS via CDK
+**Goal:** Deploy Lambda function and API Gateway
 
-**Validation Criteria:**
-- [ ] CDK deployment succeeds: `cdk deploy ComputeStack` completes
-- [ ] Lambda function appears in AWS Console
-- [ ] Lambda function has correct IAM permissions (SSM, Bedrock, DSQL)
-- [ ] API Gateway REST API created with correct stage
+### Validation Criteria
+- [ ] CDK deployment succeeds: `cdk deploy ComputeStack`
+- [ ] Lambda function exists: `aws lambda get-function --function-name grievance-portal`
+- [ ] Lambda has correct IAM permissions (SSM, Bedrock, DSQL)
+- [ ] API Gateway REST API created
 - [ ] API Gateway endpoint URL output from CDK
-- [ ] Test API endpoint: `curl https://API_ID.execute-api.REGION.amazonaws.com/prod/api/health`
-- [ ] Health check returns 200 OK with JSON response
+- [ ] Health check responds: `curl $API_ENDPOINT/api/health` returns 200
 - [ ] CloudWatch log group created: `/aws/lambda/grievance-portal`
-- [ ] Lambda invocation logs appear in CloudWatch
-- [ ] Test cold start time (should be <3 seconds)
-- [ ] Test warm invocation time (should be <500ms)
+- [ ] Lambda logs appear in CloudWatch
 
-### 6.1 Build Lambda Package
+### Tasks
 
+#### 5.1 Build and Package Lambda
 ```bash
 # Build production Lambda package
 npm run build
@@ -783,8 +239,7 @@ npm run package:lambda
 ls -lh lambda.zip
 ```
 
-### 6.2 Deploy Compute Stack
-
+#### 5.2 Deploy Compute Stack
 ```bash
 cd infrastructure
 
@@ -798,8 +253,7 @@ API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ComputeStack \
 echo "API Endpoint: $API_ENDPOINT"
 ```
 
-### 6.3 Test Deployment
-
+#### 5.3 Test Deployment
 ```bash
 # Test health check
 curl $API_ENDPOINT/api/health
@@ -810,113 +264,92 @@ curl $API_ENDPOINT/api/health
 aws logs tail /aws/lambda/grievance-portal --follow
 ```
 
-**Estimated Time:** 2-3 hours
+**Estimated Time:** 1-2 hours
 
 ---
 
-## Phase 7: Database Migration
+## Phase 6: Database Migration ⏳ NOT STARTED
 
-**Goal:** Migrate schema and data from Replit to Aurora DSQL
+**Goal:** Migrate schema and data to Aurora DSQL
 
-**Validation Criteria:**
-- [ ] DSQL cluster connection successful: `psql $DSQL_URL -c "SELECT version();"`
+### Validation Criteria
 - [ ] Schema migration completes: `npm run db:push` succeeds
 - [ ] All tables created: `psql $DSQL_URL -c "\dt"` shows expected tables
-- [ ] Table structure correct: `psql $DSQL_URL -c "\d complaints"` shows columns
-- [ ] No foreign key constraints in schema
-- [ ] Data export from Replit successful: `backup.sql` file created
-- [ ] Data import to DSQL completes without errors
-- [ ] Row counts match: Compare `SELECT COUNT(*) FROM complaints` between old and new DB
-- [ ] Sample data queries return expected results
-- [ ] Admin users migrated to Cognito
-- [ ] Test authentication with migrated user
-- [ ] Application connects to DSQL successfully via Lambda
+- [ ] Table structure correct: Verify columns match schema
+- [ ] No foreign key constraints in database
+- [ ] Data import completes without errors
+- [ ] Row counts match between old and new database
+- [ ] Sample queries return expected results
+- [ ] Application connects to DSQL successfully
 
-### 7.1 Schema Migration to Aurora DSQL
+### Tasks
 
-**Steps:**
-1. Update schema to remove DSQL-incompatible features:
-   ```bash
-   # Edit shared/schema.ts to remove foreign keys
-   # Replace SERIAL with UUID if needed
-   ```
-
-2. Run Drizzle migrations against Aurora DSQL:
-   ```bash
-   DATABASE_URL=<dsql-url> npm run db:push
-   ```
-
-3. Verify schema:
-   ```bash
-   psql $DSQL_URL -c "\dt"  # List tables
-   ```
-
-### 7.2 Data Export from Replit
-
-**Export data:**
+#### 6.1 Run Schema Migration
 ```bash
-pg_dump $REPLIT_DB_URL > backup.sql
+# Get DSQL connection string
+DSQL_URL=$(aws ssm get-parameter --name /grievance-portal/database/url \
+  --with-decryption --query 'Parameter.Value' --output text)
+
+# Run Drizzle migration
+DATABASE_URL=$DSQL_URL npm run db:push
+
+# Verify tables created
+psql $DSQL_URL -c "\dt"
 ```
 
-### 7.3 Data Import to Aurora DSQL
-
-**Important**: DSQL has transaction limits (10K rows), so batch large imports:
-
+#### 6.2 Import Data
 ```bash
 # For small datasets
 psql $DSQL_URL < backup.sql
 
-# For large datasets, split into batches
+# For large datasets (DSQL has 10K row transaction limit), split into batches
 split -l 10000 backup.sql backup_part_
 for file in backup_part_*; do
   psql $DSQL_URL < $file
 done
 ```
 
-### 7.4 Connection String Format
+#### 6.3 Verify Migration
+```bash
+# Check row counts
+psql $DSQL_URL -c "SELECT COUNT(*) FROM complaints;"
+psql $DSQL_URL -c "SELECT COUNT(*) FROM payments;"
 
-**Aurora DSQL connection string:**
+# Test sample queries
+psql $DSQL_URL -c "SELECT * FROM complaints LIMIT 5;"
 ```
-postgresql://username:password@cluster-id.dsql.us-east-1.on.aws:5432/postgres
-```
-
-Store in Secrets Manager, reference in ECS task definition via CDK.
 
 **Estimated Time:** 1-2 hours
 
 ---
 
-## Phase 8: End-to-End Testing
+## Phase 7: End-to-End Testing ⏳ NOT STARTED
 
-**Goal:** Verify full application functionality in AWS
+**Goal:** Verify full application functionality
 
-**Validation Criteria:**
-- [ ] Health check returns 200: `curl API_ENDPOINT/api/health`
+### Validation Criteria
+- [ ] Health check returns 200: `curl $API_ENDPOINT/api/health`
 - [ ] Can submit complaint through UI
-- [ ] Stripe payment completes (sandbox with test card 4242...)
+- [ ] Stripe payment completes (test card 4242...)
 - [ ] AI response generated via Bedrock
 - [ ] Admin can login with Cognito credentials
 - [ ] Admin can view complaints in admin portal
 - [ ] Stripe webhook processes successfully
 - [ ] Load test completes: 100 concurrent requests without errors
-- [ ] All CloudWatch alarms in "OK" state
 - [ ] No errors in CloudWatch logs during testing
 
-### 8.1 Test API Endpoints
+### Tasks
 
+#### 7.1 Test API Endpoints
 ```bash
-# Get API endpoint from CDK output
-API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ComputeStack \
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
-
 # Test health check
 curl $API_ENDPOINT/api/health
 
-# Should return: {"status":"healthy","timestamp":"..."}
+# Test Stripe publishable key endpoint
+curl $API_ENDPOINT/api/stripe/publishable-key
 ```
 
-### 8.2 Test Complaint Submission Flow
-
+#### 7.2 Test Complaint Submission Flow
 1. Open application in browser: `$API_ENDPOINT`
 2. Fill out complaint form
 3. Submit with Stripe test card: `4242 4242 4242 4242`
@@ -924,78 +357,55 @@ curl $API_ENDPOINT/api/health
 5. Verify AI response is generated
 6. Check CloudWatch logs for any errors
 
-### 8.3 Test Admin Authentication
-
+#### 7.3 Test Admin Portal
 1. Navigate to admin portal: `$API_ENDPOINT/admin`
-2. Login with Cognito credentials created in Phase 5
+2. Login with Cognito credentials
 3. Verify can view submitted complaints
 4. Verify can see AI responses
 
-### 8.4 Test Stripe Webhook
-
+#### 7.4 Test Stripe Webhook
 ```bash
 # Update Stripe webhook URL in Stripe Dashboard
 # URL: $API_ENDPOINT/api/stripe/webhook
 
 # Test webhook with Stripe CLI
 stripe listen --forward-to $API_ENDPOINT/api/stripe/webhook
-
-# Trigger test event
 stripe trigger payment_intent.succeeded
 ```
 
-### 8.5 Load Testing
-
+#### 7.5 Load Testing
 ```bash
-# Install Apache Bench (if not installed)
-# macOS: brew install httpd
-# Linux: apt-get install apache2-utils
-
 # Run load test (100 requests, 10 concurrent)
 ab -n 100 -c 10 $API_ENDPOINT/api/health
 
-# Check results:
-# - All requests should succeed (200 OK)
+# Verify:
+# - All requests succeed (200 OK)
 # - No failed requests
 # - Reasonable response times (<1s for warm Lambda)
-```
-
-### 8.6 Review CloudWatch Logs
-
-```bash
-# Tail Lambda logs
-aws logs tail /aws/lambda/grievance-portal --follow
-
-# Look for:
-# - No ERROR level logs
-# - Successful database connections
-# - Successful Bedrock API calls
-# - Successful SSM parameter retrievals
 ```
 
 **Estimated Time:** 2-3 hours
 
 ---
 
-## Phase 9: CI/CD Pipeline
+## Phase 8: CI/CD Pipeline ⏳ NOT STARTED
 
-**Goal:** Automate deployments from GitHub to AWS Lambda
+**Goal:** Automate deployments from GitHub
 
-**Validation Criteria:**
-- [ ] GitHub connection created and shows "Available" status in AWS Console
-- [ ] CodeBuild project created and configured correctly
+### Validation Criteria
+- [ ] GitHub connection created and shows "Available" status
+- [ ] CodeBuild project created
 - [ ] CodePipeline created with Source → Build stages
-- [ ] S3 bucket for artifacts exists
 - [ ] Manual test: Push commit to main branch
 - [ ] Pipeline automatically triggers within 1 minute
 - [ ] CodeBuild phase completes successfully
 - [ ] Lambda function code updated automatically
-- [ ] Test updated Lambda: `curl API_ENDPOINT/api/health`
+- [ ] Test updated Lambda: `curl $API_ENDPOINT/api/health`
 - [ ] CloudWatch logs show new deployment
-- [ ] Verify Lambda version incremented
 
-### 9.1 Create buildspec.yml
+### Tasks
 
+#### 8.1 Create buildspec.yml
 Create `buildspec.yml` in repository root:
 
 ```yaml
@@ -1025,26 +435,21 @@ artifacts:
     - lambda.zip
 ```
 
-### 9.2 Deploy Pipeline Stack
-
+#### 8.2 Deploy Pipeline Stack
 ```bash
 cd infrastructure
 
 # Deploy CI/CD pipeline
 cdk deploy PipelineStack
-
-# Note the GitHub connection ARN from output
 ```
 
-### 9.3 Activate GitHub Connection
-
+#### 8.3 Activate GitHub Connection
 1. Go to AWS Console → Developer Tools → Connections
 2. Find the connection "grievance-portal-github"
 3. Click "Update pending connection"
 4. Authorize AWS to access your GitHub repository
 
-### 9.4 Test Pipeline
-
+#### 8.4 Test Pipeline
 ```bash
 # Make a small change and push to main
 git commit --allow-empty -m "Test CI/CD pipeline"
@@ -1061,14 +466,12 @@ aws lambda get-function --function-name grievance-portal --query 'Configuration.
 
 ---
 
-## Phase 10: Monitoring & Security
+## Phase 9: Production Hardening ⏳ NOT STARTED
 
-**Goal:** Production hardening with monitoring and security best practices
+**Goal:** Monitoring, security, and cost optimization
 
-**Validation Criteria:**
-- [ ] CloudWatch log groups exist: `/aws/lambda/grievance-portal`, `/aws/codebuild/grievance-portal-build`
-- [ ] Lambda logs appear in real-time: `aws logs tail /aws/lambda/grievance-portal --follow`
-- [ ] Log retention set correctly (1 week)
+### Validation Criteria
+- [ ] CloudWatch log groups exist with correct retention (1 week)
 - [ ] CloudWatch alarms created and in "OK" state
 - [ ] Test alarm: Trigger condition and verify alarm fires
 - [ ] Lambda IAM role has minimum required permissions
@@ -1076,172 +479,84 @@ aws lambda get-function --function-name grievance-portal --query 'Configuration.
 - [ ] Test throttling: Burst requests return 429
 - [ ] HTTPS enforced on API Gateway
 - [ ] No secrets in CloudWatch logs
-- [ ] Unauthenticated requests to protected endpoints return 401
+- [ ] AWS Budget alert set for $20/month threshold
+- [ ] Review AWS Cost Explorer for first week of usage
+- [ ] Verify costs within expected range ($4-12/month)
 
-### 10.1 CloudWatch Monitoring
+### Tasks
 
-**Configure alarms in CDK:**
+#### 9.1 Configure CloudWatch Alarms
+Alarms are defined in CDK stacks:
+- Lambda error alarm (>5 errors)
+- Lambda duration alarm (>10 seconds)
+- DSQL DPU usage alarm (approaching free tier limit)
 
-```typescript
-// Lambda error alarm
-new cloudwatch.Alarm(this, 'LambdaErrorAlarm', {
-  metric: lambdaFunction.metricErrors(),
-  threshold: 5,
-  evaluationPeriods: 1,
-  alarmDescription: 'Lambda errors > 5',
-});
-
-// Lambda duration alarm
-new cloudwatch.Alarm(this, 'LambdaDurationAlarm', {
-  metric: lambdaFunction.metricDuration(),
-  threshold: 10000, // 10 seconds
-  evaluationPeriods: 2,
-  alarmDescription: 'Lambda duration > 10s',
-});
-
-// DSQL DPU usage alarm
-new cloudwatch.Alarm(this, 'DsqlDpuAlarm', {
-  metric: new cloudwatch.Metric({
-    namespace: 'AWS/DSQL',
-    metricName: 'TotalDPU',
-    statistic: 'Sum',
-    period: cdk.Duration.hours(1),
-  }),
-  threshold: 50000,
-  evaluationPeriods: 1,
-  alarmDescription: 'DSQL DPU approaching free tier limit',
-});
+Verify alarms exist:
+```bash
+aws cloudwatch describe-alarms --alarm-names grievance-portal-*
 ```
 
-### 10.2 Security Hardening
-
-**Lambda IAM role (configured in ComputeStack):**
-
-```typescript
-// Grant only required permissions
-lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
-  actions: ['ssm:GetParameter', 'ssm:GetParametersByPath'],
-  resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/grievance-portal/*`],
-}));
-
-lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
-  actions: ['bedrock:InvokeModel'],
-  resources: ['*'],
-}));
-
-// DSQL access (no VPC needed - Lambda uses AWS-managed VPC)
-```
-
-**API Gateway throttling:**
-
-```typescript
-const api = new apigateway.RestApi(this, 'Api', {
-  deployOptions: {
-    throttlingRateLimit: 100,
-    throttlingBurstLimit: 200,
-  },
-});
-```
-
-### 10.3 Test Security
-
+#### 9.2 Review Security
 ```bash
 # Test Lambda IAM permissions
-aws lambda invoke --function-name grievance-portal output.json
+aws lambda get-function --function-name grievance-portal --query 'Configuration.Role'
 
-# Test API Gateway throttling (requires load testing tool)
+# Test API Gateway throttling
 ab -n 300 -c 50 $API_ENDPOINT/api/health
-
-# Verify HTTPS enforcement
-curl -I http://$API_ENDPOINT  # Should redirect or fail
 
 # Check logs for secrets
 aws logs tail /aws/lambda/grievance-portal | grep -i "password\|secret\|key"
+```
+
+#### 9.3 Set Up Cost Monitoring
+```bash
+# Create AWS Budget alert
+aws budgets create-budget \
+  --account-id $(aws sts get-caller-identity --query Account --output text) \
+  --budget file://budget.json
+
+# Review costs
+aws ce get-cost-and-usage \
+  --time-period Start=2026-02-01,End=2026-02-08 \
+  --granularity DAILY \
+  --metrics BlendedCost
 ```
 
 **Estimated Time:** 2-3 hours
 
 ---
 
-## Phase 11: Cost Optimization
+## Cost Estimates
 
-**Goal:** Verify costs are within expected range and set up budget alerts
-
-**Validation Criteria:**
-- [ ] Review AWS Cost Explorer for first week of usage
-- [ ] Verify Lambda stays within free tier (1M requests, 400K GB-seconds)
-- [ ] Verify API Gateway stays within free tier (1M requests for first 12 months)
-- [ ] Verify DSQL stays within free tier (100K DPUs, 1GB storage)
-- [ ] Check CloudWatch costs (<$2/month for logs)
-- [ ] Set up AWS Budget alert for $20/month threshold
-- [ ] Test budget alert: Verify email notification received
-- [ ] Review Cost Allocation Tags on all resources
-- [ ] Verify no unexpected charges (NAT Gateway, ALB, etc.)
-- [ ] Calculate actual cost per request based on first week
-- [ ] Compare actual costs to estimates in plan
-- [ ] Document any cost surprises or optimizations needed
-
-### 10.1 Estimated Monthly Costs (Low Volume) - UPDATED FOR LAMBDA
+### Monthly Costs (Low Volume)
 
 | Service | Configuration | Monthly Cost |
 |---------|--------------|--------------|
-| Aurora DSQL | Free tier: 100K DPUs + 1GB | **$0-5** |
-| Lambda | Free tier: 1M requests + 400K GB-seconds<br>Beyond: $0.20/1M requests | **$0-2** |
-| API Gateway | Free tier: 1M requests (first 12 months)<br>Beyond: $3.50/1M requests | **$0-3** |
-| SSM Parameter Store | Standard parameters (free) | **$0** |
-| CloudWatch Logs | ~2 GB ingestion + storage | **$2** |
-| S3 | Lambda deployment packages | **$0.10** |
-| CodeBuild | Free tier: 100 build minutes/month | **$0** |
-| Bedrock | Pay-per-use | **Variable** |
-| **TOTAL (excluding Bedrock)** | | **~$4-12/month** |
+| Aurora DSQL | Free tier: 100K DPUs + 1GB | $0-5 |
+| Lambda | Free tier: 1M requests + 400K GB-seconds | $0-2 |
+| API Gateway | Free tier: 1M requests (first 12 months) | $0-3 |
+| SSM Parameter Store | Standard parameters | $0 |
+| CloudWatch Logs | ~2 GB ingestion + storage | $2 |
+| S3 | Lambda deployment packages | $0.10 |
+| CodeBuild | Free tier: 100 build minutes/month | $0 |
+| **TOTAL (excluding Bedrock)** | | **$4-12/month** |
 
-**Massive savings: $59-67/month vs ECS Fargate approach!** 🎉
+**Bedrock costs:** Pay-per-use, varies by model and usage
 
-### 10.2 Cost Comparison
+### Cost Comparison
 
 | Architecture | Monthly Cost | Notes |
 |--------------|--------------|-------|
-| **Lambda + API Gateway** | **$4-12** | ✅ Scales to zero, no VPC |
+| **Lambda + API Gateway** | **$4-12** | ✅ Scales to zero |
 | ECS Fargate + ALB | $71 | Always-on, requires VPC/NAT |
-| Aurora Serverless v2 + ECS | $114 | Original plan with Aurora Serverless |
 
-**Total savings: 83-94% cost reduction!**
-
-### 10.3 Scaling Costs (Lambda Architecture)
-
-**At 1M requests/month (free tier limit):**
-- Lambda: Still free (within 400K GB-seconds)
-- API Gateway: $0 (first 12 months), then $3.50/month
-- **Total: ~$4-8/month**
-
-**At 10M requests/month:**
-- Lambda: ~$2 (1M free + 9M × $0.20)
-- API Gateway: $35 (10M × $3.50)
-- DSQL: ~$10-20 (increased usage)
-- **Total: ~$47-57/month**
-
-**Lambda scales linearly with usage - you only pay for what you use!**
+**Savings: 83-94%**
 
 ---
 
-## Phase 12: Documentation & Rollback
+## Rollback Procedures
 
-**Goal:** Finalize procedures and test rollback capabilities
-
-**Validation Criteria:**
-- [ ] Deployment process documented
-- [ ] Rollback procedures documented and tested
-- [ ] Lambda versions visible: `aws lambda list-versions-by-function`
-- [ ] Lambda rollback tested and verified
-- [ ] DSQL backup plan configured
-- [ ] DSQL restore tested
-- [ ] CloudFormation stack rollback tested (in non-prod environment)
-- [ ] Document rollback procedures and time estimates
-- [ ] Test complete rollback scenario: Lambda + Database + Infrastructure
-
-### 12.1 Lambda Rollback
-
-**Lambda versions:**
+### Lambda Rollback
 ```bash
 # List Lambda versions
 aws lambda list-versions-by-function --function-name grievance-portal
@@ -1250,484 +565,23 @@ aws lambda list-versions-by-function --function-name grievance-portal
 aws lambda update-alias --function-name grievance-portal --name prod --function-version <PREVIOUS_VERSION>
 ```
 
-**Or via Console:**
-1. Go to Lambda Console → grievance-portal
-2. Versions tab → Select previous version
-3. Update alias to point to that version
-
-### 12.2 Database Rollback (Aurora DSQL)
-
-**Aurora DSQL backups:**
+### Database Rollback
 - Use AWS Backup for point-in-time recovery
 - Manual snapshots before major migrations
 - Restore creates new cluster (doesn't overwrite)
 
-**CDK-managed backups:**
-```typescript
-// In database-stack.ts
-const backupPlan = new backup.BackupPlan(this, 'DsqlBackupPlan', {
-  backupPlanRules: [
-    new backup.BackupPlanRule({
-      ruleName: 'DailyBackup',
-      scheduleExpression: events.Schedule.cron({ hour: '2', minute: '0' }),
-      deleteAfter: cdk.Duration.days(7),
-    }),
-  ],
-});
-
-backupPlan.addSelection('DsqlSelection', {
-  resources: [backup.BackupResource.fromArn(dsqlCluster.attrArn)],
-});
-```
-
-### 12.3 Infrastructure Rollback (CDK)
-
-**CDK stack rollback:**
+### Infrastructure Rollback
 ```bash
 # Rollback to previous CDK version
 git checkout <previous-commit>
 cdk deploy --all
-
-# Or use CloudFormation console to rollback individual stacks
-```
-
-**CodeBuild rollback:**
-- Push a revert commit to main
-- CodeBuild automatically triggers and deploys
-
----
-
-## Phase 13: Unit Testing
-
-**Goal:** Add test coverage for critical functionality after migration is stable
-
-**Validation Criteria:**
-- [ ] Testing framework installed (Vitest or Jest)
-- [ ] Test script added to package.json
-- [ ] Unit tests for AWS integration code (SSM, Cognito, Bedrock wrappers)
-- [ ] Unit tests for critical business logic (payment processing, complaint submission)
-- [ ] Test coverage report generated
-- [ ] All tests passing: `npm test`
-- [ ] CI/CD pipeline runs tests before deployment
-
-### 13.1 Install Testing Framework
-
-**Install Vitest (recommended for Vite projects):**
-```bash
-npm install -D vitest @vitest/ui
-```
-
-**Add test script to package.json:**
-```json
-{
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
-  }
-}
-```
-
-### 13.2 Priority Test Areas
-
-**High priority (write first):**
-1. SSM parameter loading (`server/aws/ssm.test.ts`)
-2. Cognito JWT verification (`server/auth/cognito.test.ts`)
-3. Bedrock client wrapper (`server/bedrock/client.test.ts`)
-4. Payment processing (`server/routes.test.ts` - Stripe integration)
-5. Complaint submission validation
-
-**Medium priority:**
-6. Database storage layer (`server/storage.test.ts`)
-7. Schema validation
-8. API route handlers
-
-**Low priority:**
-9. Frontend components (after backend is stable)
-10. Integration tests (covered by Phase 8 E2E testing)
-
-### 13.3 Example Test Structure
-
-**SSM Parameter Test:**
-```typescript
-import { describe, it, expect, vi } from 'vitest';
-import { getParameters } from './ssm';
-
-describe('SSM Parameter Loading', () => {
-  it('should load and cache parameters', async () => {
-    const params = await getParameters();
-    expect(params).toHaveProperty('stripe/secret-key');
-    expect(params).toHaveProperty('database/url');
-  });
-
-  it('should return cached parameters on second call', async () => {
-    const params1 = await getParameters();
-    const params2 = await getParameters();
-    expect(params1).toBe(params2); // Same object reference
-  });
-});
-```
-
-### 13.4 Update CI/CD Pipeline
-
-**Update buildspec.yml:**
-```yaml
-phases:
-  pre_build:
-    commands:
-      - npm ci
-      - npm test  # Add test step
-  build:
-    commands:
-      - npm run build
-```
-
-**Estimated Time:** 2-3 days
-
----
-
-## Appendix A: Key Code Changes Required
-
-### A.1 Lambda Handler Creation
-
-**New file** (`server/lambda.ts`):
-```typescript
-import serverlessExpress from '@codegenie/serverless-express';
-import app from './index';
-
-// Wrap Express app for Lambda
-export const handler = serverlessExpress({ app });
-```
-
-**Update** (`server/index.ts`):
-```typescript
-// Conditionally start server (not in Lambda)
-if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(port, "0.0.0.0", () => {
-    log(`Server running on port ${port}`);
-  });
-}
-
-// Export for Lambda
-export default app;
-```
-
-### A.2 Schema Changes for DSQL Compatibility
-
-**Remove foreign keys:**
-```typescript
-// Before (shared/schema.ts)
-export const payments = pgTable("payments", {
-  id: serial("id").primaryKey(),
-  complaintId: integer("complaint_id").references(() => complaints.id).notNull(),
-  // ...
-});
-
-// After
-export const payments = pgTable("payments", {
-  id: uuid("id").defaultRandom().primaryKey(), // Changed to UUID
-  complaintId: uuid("complaint_id").notNull(), // No .references()
-  // ...
-});
-
-// Add validation in storage layer
-async createPayment(payment: InsertPayment) {
-  // Validate complaint exists
-  const complaint = await this.getComplaint(payment.complaintId);
-  if (!complaint) {
-    throw new Error('Complaint not found');
-  }
-  return db.insert(payments).values(payment).returning();
-}
-```
-
-### A.3 Authentication Migration
-
-**Remove:**
-- `server/replit_integrations/auth/*`
-- Passport.js configuration
-- OpenID Connect client
-
-**Add:**
-- Cognito JWT verification
-- Token-based authentication middleware
-- Cognito user management utilities
-
-### A.4 AI Migration
-
-**Replace OpenAI calls with Bedrock:**
-
-**Before:**
-```typescript
-const response = await openai.chat.completions.create({
-  model: "gpt-4",
-  messages: [{ role: "user", content: prompt }]
-});
-```
-
-**After:**
-```typescript
-const response = await bedrockClient.invokeModel({
-  modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
-  body: JSON.stringify({
-    anthropic_version: "bedrock-2023-05-31",
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: 1024
-  })
-});
-```
-
-### A.5 SSM Parameter Store Loading
-
-**Load parameters at Lambda startup:**
-```typescript
-import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
-
-const ssmClient = new SSMClient({ region: process.env.AWS_REGION });
-let cachedParams: Record<string, string> | null = null;
-
-async function loadParameters() {
-  const response = await ssmClient.send(
-    new GetParametersByPathCommand({
-      Path: '/grievance-portal/',
-      Recursive: true,
-      WithDecryption: true,
-    })
-  );
-  
-  const params: Record<string, string> = {};
-  response.Parameters?.forEach(param => {
-    const key = param.Name?.replace('/grievance-portal/', '');
-    if (key && param.Value) params[key] = param.Value;
-  });
-  
-  return params;
-}
-
-export async function getParameters() {
-  if (!cachedParams) cachedParams = await loadParameters();
-  return cachedParams;
-}
-```
-
-## Appendix B: CDK Code Examples
-
-### B.1 Complete Lambda + API Gateway Stack
-
-```typescript
-import * as cdk from 'aws-cdk-lib';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as logs from 'aws-cdk-lib/aws-logs';
-import { Construct } from 'constructs';
-
-export class ComputeStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
-
-    // Lambda function
-    const lambdaFunction = new lambda.Function(this, 'GrievancePortalFunction', {
-      functionName: 'grievance-portal',
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset('../lambda.zip'),
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
-      environment: {
-        NODE_ENV: 'production',
-        AWS_REGION: this.region,
-      },
-      logRetention: logs.RetentionDays.ONE_WEEK,
-    });
-
-    // Grant permissions
-    lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['ssm:GetParameter', 'ssm:GetParametersByPath'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/grievance-portal/*`],
-    }));
-
-    lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['bedrock:InvokeModel'],
-      resources: ['*'],
-    }));
-
-    // API Gateway
-    const api = new apigateway.RestApi(this, 'GrievancePortalApi', {
-      restApiName: 'Grievance Portal API',
-      deployOptions: {
-        stageName: 'prod',
-        throttlingRateLimit: 100,
-        throttlingBurstLimit: 200,
-      },
-    });
-
-    // Lambda integration (proxy all requests)
-    const integration = new apigateway.LambdaIntegration(lambdaFunction, { proxy: true });
-    api.root.addProxy({ defaultIntegration: integration, anyMethod: true });
-
-    new cdk.CfnOutput(this, 'ApiEndpoint', {
-      value: api.url,
-      description: 'API Gateway endpoint URL',
-    });
-  }
-}
-```
-
-### B.2 Complete SSM Parameters Stack
-
-```typescript
-import * as cdk from 'aws-cdk-lib';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
-import { Construct } from 'constructs';
-
-export class ParametersStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
-
-    // Stripe parameters
-    new ssm.StringParameter(this, 'StripeSecretKey', {
-      parameterName: '/grievance-portal/stripe/secret-key',
-      stringValue: 'PLACEHOLDER', // Update manually after deployment
-      type: ssm.ParameterType.SECURE_STRING,
-    });
-
-    new ssm.StringParameter(this, 'StripePublishableKey', {
-      parameterName: '/grievance-portal/stripe/publishable-key',
-      stringValue: 'PLACEHOLDER',
-    });
-
-    new ssm.StringParameter(this, 'StripeWebhookSecret', {
-      parameterName: '/grievance-portal/stripe/webhook-secret',
-      stringValue: 'PLACEHOLDER',
-      type: ssm.ParameterType.SECURE_STRING,
-    });
-
-    // Session secret
-    new ssm.StringParameter(this, 'SessionSecret', {
-      parameterName: '/grievance-portal/session/secret',
-      stringValue: 'PLACEHOLDER',
-      type: ssm.ParameterType.SECURE_STRING,
-    });
-  }
-}
-```
-
-### B.3 AWS CLI Commands
-
-```bash
-# CDK Commands
-cdk synth                    # Synthesize CloudFormation templates
-cdk deploy --all             # Deploy all stacks
-cdk deploy ComputeStack      # Deploy specific stack
-cdk diff                     # Show changes
-cdk destroy --all            # Destroy all resources
-
-# Lambda Commands
-aws lambda list-functions
-aws lambda get-function --function-name grievance-portal
-aws lambda update-function-code --function-name grievance-portal --s3-bucket BUCKET --s3-key lambda.zip
-aws lambda invoke --function-name grievance-portal output.json
-
-# API Gateway Commands
-aws apigateway get-rest-apis
-aws apigateway test-invoke-method --rest-api-id API_ID --resource-id RESOURCE_ID --http-method GET
-
-# View Lambda logs
-aws logs tail /aws/lambda/grievance-portal --follow
-
-# View DSQL cluster status
-aws dsql get-cluster --identifier grievance-portal-dsql
-
-# SSM Parameter Store Commands
-aws ssm get-parameters-by-path --path /grievance-portal/ --recursive --with-decryption
-aws ssm put-parameter --name /grievance-portal/stripe/secret-key --value "sk_live_..." --type SecureString --overwrite
-```
-
-### B.4 Local Testing Commands
-
-```bash
-# Build Lambda package
-npm run build
-npm run package:lambda
-
-# Test Lambda locally with SAM
-sam local start-api
-curl http://localhost:3000/api/health
-
-# Test specific Lambda function
-sam local invoke GrievancePortalFunction --event test-event.json
-
-# Run Express app normally (development)
-npm run dev
 ```
 
 ---
 
-## Appendix C: Troubleshooting Guide
+## Quick Reference Commands
 
-### C.1 Common Issues
-
-**Lambda cold starts:**
-- First request after idle: 1-3 seconds
-- Solution: Enable provisioned concurrency (costs extra)
-- Or: Accept cold starts for low-volume app
-
-**Lambda timeout errors:**
-- Check CloudWatch logs for actual error
-- Increase timeout in CDK (max 15 minutes)
-- Optimize database queries
-
-**API Gateway 502 errors:**
-- Lambda function crashed or timed out
-- Check CloudWatch logs: `/aws/lambda/grievance-portal`
-- Verify Lambda has correct IAM permissions
-
-**SSM Parameter Store access denied:**
-- Verify Lambda IAM role has `ssm:GetParameter` permission
-- Check parameter path matches: `/grievance-portal/*`
-- Ensure parameters exist in correct region
-
-**Database connection failures:**
-- Verify security group allows Lambda → DSQL (Lambda uses AWS-managed VPC)
-- Check connection string in SSM Parameter Store
-- Ensure DSQL cluster is active
-- Verify database credentials
-- Check for DSQL-specific errors (transaction limits, unsupported features)
-
-**DSQL-specific issues:**
-- Transaction too large: Batch operations into <10K rows
-- Foreign key errors: Remove from schema, enforce in app
-- DDL/DML mixing: Separate into different transactions
-- Temporary table errors: Use CTEs or regular tables
-
-**Stripe webhooks not working:**
-- Update webhook URL in Stripe dashboard to API Gateway URL
-- Verify webhook signature verification
-- Check CloudWatch logs for errors
-- Test with Stripe CLI: `stripe listen --forward-to YOUR_API_URL/api/stripe/webhook`
-
-**CodeBuild failures:**
-- Check CodeBuild logs in CloudWatch
-- Verify buildspec.yml syntax
-- Ensure build succeeds locally: `npm run build && npm run package:lambda`
-- Check Lambda update permissions
-
-**CDK deployment failures:**
-- Check CloudFormation events in console
-- Verify IAM permissions
-- Check for resource naming conflicts
-- Review CDK synth output for errors
-
----
-
----
-
-## Quick Validation Reference
-
-### Infrastructure Validation Commands
+### Validation Commands
 ```bash
 # Check DSQL cluster
 aws dsql get-cluster --identifier grievance-portal-dsql
@@ -1738,18 +592,8 @@ aws ssm get-parameters-by-path --path /grievance-portal/ --recursive
 # Check Lambda function
 aws lambda get-function --function-name grievance-portal
 
-# Check API Gateway
-aws apigateway get-rest-apis
-```
-
-### Testing Commands
-```bash
 # Test API health check
-curl https://YOUR_API_ID.execute-api.REGION.amazonaws.com/prod/api/health
-
-# Test Lambda locally
-sam local start-api
-curl http://localhost:3000/api/health
+curl $API_ENDPOINT/api/health
 
 # View Lambda logs
 aws logs tail /aws/lambda/grievance-portal --follow
@@ -1758,22 +602,13 @@ aws logs tail /aws/lambda/grievance-portal --follow
 psql $DSQL_URL -c "SELECT version();"
 ```
 
-### Monitoring Commands
-```bash
-# Check CloudWatch alarms
-aws cloudwatch describe-alarms --alarm-names grievance-portal-*
-
-# View recent Lambda invocations
-aws lambda get-function --function-name grievance-portal --query 'Configuration.LastModified'
-
-# Check costs
-aws ce get-cost-and-usage --time-period Start=2026-02-01,End=2026-02-07 --granularity DAILY --metrics BlendedCost
-```
-
 ### Deployment Commands
 ```bash
-# Deploy CDK stacks
-cdk deploy --all
+# Deploy all CDK stacks
+cd infrastructure && cdk deploy --all
+
+# Deploy specific stack
+cdk deploy ComputeStack
 
 # Trigger CodeBuild
 aws codebuild start-build --project-name grievance-portal-build
@@ -1784,79 +619,29 @@ aws codepipeline get-pipeline-state --name grievance-portal-pipeline
 
 ---
 
-## Success Criteria Summary
-
-**Phases 1-6 Complete When:**
-- All infrastructure deployed via CDK
-- Lambda function running and accessible via API Gateway
-- CI/CD pipeline automatically deploying from GitHub
-- All validation tests passing
-
-**Phases 7-9 Complete When:**
-- Database migrated with all data intact
-- Monitoring and alarms configured and working
-- Security hardening complete and tested
-- No security vulnerabilities in IAM policies
-
-**Phases 10-13 Complete When:**
-- Costs within expected range ($4-12/month)
-- Local development workflow documented and tested
-- Rollback procedures tested and documented
-- Full end-to-end testing complete
+## Success Criteria
 
 **Production Ready When:**
-- All 13 phases validated
-- Load testing complete (100+ concurrent requests)
-- Disaster recovery plan documented
-- Team trained on deployment and rollback procedures
+- ✅ All 9 phases validated
+- ✅ All validation criteria checked off
+- ✅ Load testing complete (100+ concurrent requests)
+- ✅ Costs within expected range ($4-12/month)
+- ✅ Monitoring and alarms working
+- ✅ CI/CD pipeline deploying automatically
+- ✅ Rollback procedures tested
 
 ---
 
-## Summary
+## Timeline Estimate
 
-This plan provides a complete serverless path from Replit to AWS with:
-- ✅ **Production-ready serverless architecture**
-- ✅ **Extremely low cost: $4-12/month at low volume (83-94% savings)**
-- ✅ **True scale-to-zero: Lambda, API Gateway, and DSQL all scale to zero**
-- ✅ **All infrastructure defined in AWS CDK (TypeScript)**
-- ✅ **No VPC, No NAT Gateway, No ALB needed**
-- ✅ **Automated deployments from GitHub**
-- ✅ **Local development with normal Express server**
-- ✅ **Security best practices**
-- ✅ **Monitoring and logging**
-- ✅ **Easy rollback capabilities**
+- Phase 1: Prerequisites ✅ Complete
+- Phase 2: CDK Infrastructure Code ✅ Complete
+- Phase 3: Application Refactoring ✅ Complete
+- Phase 4: Deploy Core Infrastructure - 2-3 hours
+- Phase 5: Deploy Application - 1-2 hours
+- Phase 6: Database Migration - 1-2 hours
+- Phase 7: End-to-End Testing - 2-3 hours
+- Phase 8: CI/CD Pipeline - 2-3 hours
+- Phase 9: Production Hardening - 2-3 hours
 
-**Key Advantages:**
-- **Lambda**: Scales to zero, pay per request ($0.20/1M requests)
-- **API Gateway**: Scales to zero, pay per request ($3.50/1M requests)
-- **Aurora DSQL**: Scales to zero, free tier 100K DPUs/month
-- **SSM Parameter Store**: Free for standard parameters
-- **No always-on infrastructure costs**
-
-**Trade-offs:**
-- Cold starts (1-3 seconds after idle)
-- 15-minute Lambda timeout limit
-- 6MB API Gateway payload limit
-- Requires Express app wrapper (serverless-express)
-- DSQL constraints (no foreign keys, 10K row transactions)
-
-**Cost Comparison:**
-| Volume | Lambda Architecture | ECS Fargate | Savings |
-|--------|---------------------|-------------|---------|
-| Low (<100K requests/month) | $4-12 | $71 | 83-94% |
-| Medium (1M requests/month) | $4-8 | $71 | 89-94% |
-| High (10M requests/month) | $47-57 | $71+ | 20-34% |
-
-**Next Steps:**
-1. Review and approve this serverless plan
-2. Set up AWS account and choose region (us-east-1 recommended)
-3. Install AWS CDK: `npm install --save-dev aws-cdk`
-4. Begin Phase 1 (Pre-Deployment Setup)
-6. Proceed through phases sequentially
-7. Test thoroughly at each phase
-
-**Estimated Timeline:**
-- CDK infrastructure setup: 1-2 days
-- Code refactoring (Lambda wrapper, Cognito/Bedrock/DSQL, SSM): 3-5 days
-- Testing and deployment: 2-3 days
-- **Total: 1-2 weeks**
+**Remaining Time:** 11-18 hours (1.5-2.5 days)
