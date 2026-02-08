@@ -242,42 +242,58 @@ aws cognito-idp list-users --user-pool-id $USER_POOL_ID
 
 ---
 
-## Phase 5: Deploy Application ⏳ IN PROGRESS
+## Phase 5: Deploy Application ✅ COMPLETED
 
 **Started:** February 8, 2026 22:24 UTC  
+**Completed:** February 8, 2026 22:46 UTC  
 **Goal:** Deploy Lambda function and API Gateway
 
 ### Progress Notes
-**2026-02-08 22:24 UTC** - Starting Phase 5 deployment:
+**2026-02-08 22:46 UTC** - Phase 5 complete! API is live and responding.
 
 #### Checklist for Phase 5 Completion:
-- [x] 5.1: Build and package Lambda (435KB)
+- [x] 5.1: Build and package Lambda (372KB)
 - [x] 5.2: Deploy Compute Stack
 - [x] 5.3: Get API endpoint URL (https://<API_GATEWAY_ID>.execute-api.us-east-1.amazonaws.com/prod/)
-- [ ] 5.4: Test health check endpoint
-- [ ] 5.5: Verify Lambda logs in CloudWatch
+- [x] 5.4: Test health check endpoint - Returns 200 OK
+- [x] 5.5: Verify Lambda logs in CloudWatch
 
 ### Validation Criteria
-- [ ] CDK deployment succeeds: `cdk deploy ComputeStack`
-- [ ] Lambda function exists: `aws lambda get-function --function-name grievance-portal`
-- [ ] Lambda has correct IAM permissions (SSM, Bedrock, DSQL)
-- [ ] API Gateway REST API created
-- [ ] API Gateway endpoint URL output from CDK
-- [ ] Health check responds: `curl $API_ENDPOINT/api/health` returns 200
-- [ ] CloudWatch log group created: `/aws/lambda/grievance-portal`
-- [ ] Lambda logs appear in CloudWatch
+- [x] CDK deployment succeeds: `cdk deploy ComputeStack`
+- [x] Lambda function exists: `aws lambda get-function --function-name grievance-portal`
+- [x] Lambda has correct IAM permissions (SSM, Bedrock, DSQL)
+- [x] API Gateway REST API created
+- [x] API Gateway endpoint URL output from CDK
+- [x] Health check responds: `curl $API_ENDPOINT/api/health` returns 200
+- [x] CloudWatch log group created: `/aws/lambda/grievance-portal`
+- [x] Lambda logs appear in CloudWatch
 
-### Tasks
+### Issues Resolved
+1. **SSM Parameter Loading**: Added `server/init.ts` to load parameters before app starts
+2. **Database Connection**: Made DSQL connection lazy-loaded via `getDb()` function
+3. **Native Dependencies**: Replaced bcrypt with bcryptjs (no native compilation)
+4. **Build Process**: Updated `script/build.ts` to auto-create lambda.zip
+5. **Static Files**: Skip static file serving in Lambda (AWS_EXECUTION_ENV check)
+6. **Route Registration**: Fixed async initialization timing - exported `appReady` promise
+7. **Health Endpoint**: Added `/api/health` route for testing
+8. **Local Testing**: Created `test-lambda-local.cjs` for rapid iteration
 
-#### 5.1 Build and Package Lambda
-```bash
-# Build production Lambda package
-npm run build
-npm run package:lambda
+### What Was Done
+- Deployed GrievancePortalComputeStack with Lambda + API Gateway
+- Fixed multiple Lambda initialization issues
+- Verified API working with health check: `{"status":"healthy","timestamp":"..."}`
+- API endpoint: https://<API_GATEWAY_ID>.execute-api.us-east-1.amazonaws.com/prod/
 
-# Verify package
-ls -lh lambda.zip
-```
+**Next:** Phase 6 - Deploy Static Frontend
+
+---
+
+## Phase 6: Deploy Static Frontend (S3 + CloudFront)
+
+**Goal:** Serve React frontend from S3 + CloudFront instead of Lambda
+
+### Validation Criteria
+- [ ] CDK deployment succeeds: `cdk deploy FrontendStack`
 
 #### 5.2 Deploy Compute Stack
 ```bash
