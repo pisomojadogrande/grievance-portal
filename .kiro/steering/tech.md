@@ -21,3 +21,39 @@ You have in your environment credentials to a ReadOnly IAM Role in the AWS accou
 # NPM Install
 
 If you get an "npm error code E401" ("Unable to authenticate") it is because the NPM registry by default points to something other than the general public NPM.  You can work around this with a --registry https://registry.npmjs.org for your "npm install" commands.
+
+# Local Lambda testing
+
+It's better if you test changes to the Lambda function locally and iterate until things work, rather than asking me to deploy every time you make a change.  The test script is test-lambda-local.cjs
+
+What it does:
+1. Sets Lambda environment variables (AWS_EXECUTION_ENV, NODE_ENV=production)
+2. Mocks SSM parameters as environment variables (so it doesn't need AWS credentials)
+3. Loads the compiled Lambda handler from dist/lambda.cjs
+4. Creates a proper API Gateway proxy event structure
+5. Invokes the handler and displays the response
+
+How to run it:
+bash
+### Build first (creates dist/lambda.cjs and lambda.zip)
+npm run build
+
+### Run local test
+node test-lambda-local.cjs
+
+What you see:
+- Console output showing the request being processed
+- HTTP status code
+- Response body (JSON)
+- Any errors or logs from the Lambda handler
+
+Key advantage: Tests the actual compiled Lambda code (dist/lambda.cjs) that will run on AWS, not the TypeScript source.
+This catches issues like:
+- Missing exports
+- Module loading problems
+- Route registration timing issues
+- Environment variable dependencies
+
+Mock values: The script uses mock Stripe keys and a test database URL, so it doesn't need real AWS credentials or make
+real AWS API calls. For full integration testing with real DSQL/SSM, you'd need AWS credentials.
+
