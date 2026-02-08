@@ -91,7 +91,8 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
+// Promise that resolves when app is fully initialized
+export const appReady = (async () => {
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
