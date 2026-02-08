@@ -12,6 +12,7 @@ Migrate the Replit-based Grievance Portal to AWS using a serverless architecture
 **Architecture:**
 - **Compute**: AWS Lambda with serverless-express wrapper (scales to zero)
 - **API**: API Gateway REST API (scales to zero)
+- **Static Files**: S3 + CloudFront (scales to zero)
 - **Database**: Aurora DSQL (scales to zero, PostgreSQL-compatible)
 - **Auth**: AWS Cognito (replacing Replit Auth)
 - **AI**: AWS Bedrock (replacing OpenAI)
@@ -28,12 +29,13 @@ Migrate the Replit-based Grievance Portal to AWS using a serverless architecture
 1. ✅ **Phase 1: Prerequisites** - AWS account, tools, CDK bootstrap
 2. ✅ **Phase 2: CDK Infrastructure Code** - Create stack definitions
 3. ✅ **Phase 3: Application Refactoring** - Make code AWS-compatible
-4. ⏳ **Phase 4: Deploy Core Infrastructure** - DSQL, SSM, Cognito
-5. ⏳ **Phase 5: Deploy Application** - Lambda + API Gateway
-6. ⏳ **Phase 6: Database Migration** - Migrate schema and data
-7. ⏳ **Phase 7: End-to-End Testing** - Verify full functionality
-8. ⏳ **Phase 8: CI/CD Pipeline** - Automate deployments
-9. ⏳ **Phase 9: Production Hardening** - Monitoring, security, costs
+4. ✅ **Phase 4: Deploy Core Infrastructure** - DSQL, SSM, Cognito
+5. ⏳ **Phase 5: Deploy Application API** - Lambda + API Gateway (API only)
+6. ⏳ **Phase 6: Deploy Static Frontend** - S3 + CloudFront for React app
+7. ⏳ **Phase 7: Database Migration** - Migrate schema and data
+8. ⏳ **Phase 8: End-to-End Testing** - Verify full functionality
+9. ⏳ **Phase 9: CI/CD Pipeline** - Automate deployments
+10. ⏳ **Phase 10: Production Hardening** - Monitoring, security, costs
 
 ---
 
@@ -306,7 +308,76 @@ aws logs tail /aws/lambda/grievance-portal --follow
 
 ---
 
-## Phase 6: Database Migration ⏳ NOT STARTED
+## Phase 6: Deploy Static Frontend ⏳ NOT STARTED
+
+**Goal:** Deploy React frontend to S3 + CloudFront
+
+### Validation Criteria
+- [ ] S3 bucket created for static files
+- [ ] CloudFront distribution created
+- [ ] Frontend files uploaded to S3
+- [ ] CloudFront serves index.html at root
+- [ ] CloudFront configured to proxy /api/* to API Gateway
+- [ ] HTTPS enabled with ACM certificate (or CloudFront default)
+- [ ] Can access website via CloudFront URL
+- [ ] API calls from frontend work correctly
+
+### Tasks
+
+#### 6.1 Create CDK Stack for Frontend
+Create `infrastructure/lib/frontend-stack.ts`:
+- S3 bucket with static website hosting
+- CloudFront distribution
+- Origin for S3 (static files)
+- Origin for API Gateway (API requests)
+- Behavior: `/api/*` → API Gateway
+- Behavior: `/*` → S3 (with fallback to index.html)
+
+#### 6.2 Deploy Frontend Stack
+```bash
+cd infrastructure
+npx cdk deploy GrievancePortalFrontendStack
+```
+
+#### 6.3 Upload Frontend Files
+```bash
+# Get S3 bucket name from stack output
+BUCKET_NAME=$(aws cloudformation describe-stacks \
+  --stack-name GrievancePortalFrontendStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
+  --output text)
+
+# Upload built frontend
+aws s3 sync dist/public/ s3://$BUCKET_NAME/ --delete
+
+# Invalidate CloudFront cache
+DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+  --stack-name GrievancePortalFrontendStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' \
+  --output text)
+
+aws cloudfront create-invalidation \
+  --distribution-id $DISTRIBUTION_ID \
+  --paths "/*"
+```
+
+#### 6.4 Test Frontend
+```bash
+# Get CloudFront URL
+CLOUDFRONT_URL=$(aws cloudformation describe-stacks \
+  --stack-name GrievancePortalFrontendStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' \
+  --output text)
+
+# Test in browser
+echo "Visit: $CLOUDFRONT_URL"
+```
+
+**Estimated Time:** 2-3 hours
+
+---
+
+## Phase 7: Database Migration ⏳ NOT STARTED
 
 **Goal:** Migrate schema and data to Aurora DSQL
 
@@ -322,7 +393,7 @@ aws logs tail /aws/lambda/grievance-portal --follow
 
 ### Tasks
 
-#### 6.1 Run Schema Migration
+#### 7.1 Run Schema Migration
 ```bash
 # Get DSQL connection string
 DSQL_URL=$(aws ssm get-parameter --name /grievance-portal/database/url \
@@ -335,7 +406,7 @@ DATABASE_URL=$DSQL_URL npm run db:push
 psql $DSQL_URL -c "\dt"
 ```
 
-#### 6.2 Import Data
+#### 7.2 Import Data
 ```bash
 # For small datasets
 psql $DSQL_URL < backup.sql
@@ -347,7 +418,7 @@ for file in backup_part_*; do
 done
 ```
 
-#### 6.3 Verify Migration
+#### 7.3 Verify Migration
 ```bash
 # Check row counts
 psql $DSQL_URL -c "SELECT COUNT(*) FROM complaints;"
@@ -361,7 +432,7 @@ psql $DSQL_URL -c "SELECT * FROM complaints LIMIT 5;"
 
 ---
 
-## Phase 7: End-to-End Testing ⏳ NOT STARTED
+## Phase 8: End-to-End Testing ⏳ NOT STARTED
 
 **Goal:** Verify full application functionality
 
@@ -426,7 +497,7 @@ ab -n 100 -c 10 $API_ENDPOINT/api/health
 
 ---
 
-## Phase 8: CI/CD Pipeline ⏳ NOT STARTED
+## Phase 9: CI/CD Pipeline ⏳ NOT STARTED
 
 **Goal:** Automate deployments from GitHub
 
@@ -504,7 +575,7 @@ aws lambda get-function --function-name grievance-portal --query 'Configuration.
 
 ---
 
-## Phase 9: Production Hardening ⏳ NOT STARTED
+## Phase 10: Production Hardening ⏳ NOT STARTED
 
 **Goal:** Monitoring, security, and cost optimization
 
