@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import { getDb } from "./db";
 import { adminUsers } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 // Middleware to check if user is admin (supports both Replit Auth and password-based auth)
 export const isAdmin: RequestHandler = async (req: any, res, next) => {
