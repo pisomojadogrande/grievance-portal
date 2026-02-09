@@ -355,13 +355,26 @@ Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend cal
 
 ---
 
-## Phase 8: End-to-End Testing ⏳ NOT STARTED
+## Phase 8: End-to-End Testing ⏳ IN PROGRESS
 
+**Started:** February 9, 2026 01:02 UTC  
 **Goal:** Verify full application functionality
 
+### Progress Notes
+**2026-02-09 01:02 UTC** - Started Phase 8 testing:
+- ✅ API health check works: Returns 200 OK
+- ✅ Frontend loads correctly at CloudFront URL
+- ✅ API URL properly injected into HTML
+- ❌ Complaint submission failing - frontend was calling CloudFront instead of API Gateway
+- 🔧 Fixed: Updated all frontend fetch calls to use `apiUrl()` helper
+- 🔧 Fixed: Updated `buildUrl()` usage in use-complaints.ts
+- ⏳ **NEXT**: Deploy frontend with fixes and test complaint submission
+
+**Current Status:** Frontend code fixed, needs deployment via `npm run deploy:frontend`
+
 ### Validation Criteria
-- [ ] Health check returns 200: `curl $API_ENDPOINT/api/health`
-- [ ] Can submit complaint through UI
+- [x] Health check returns 200: `curl $API_ENDPOINT/api/health`
+- [ ] Can submit complaint through UI (fixed, needs deployment)
 - [ ] Stripe payment completes (test card 4242...)
 - [ ] AI response generated via Bedrock
 - [ ] Admin can login with Cognito credentials
@@ -370,9 +383,16 @@ Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend cal
 - [ ] Load test completes: 100 concurrent requests without errors
 - [ ] No errors in CloudWatch logs during testing
 
+### Issues Found & Fixed
+1. **Frontend API calls going to CloudFront instead of API Gateway**
+   - Root cause: Hardcoded `/api/*` paths not using `apiUrl()` helper
+   - Fixed: Updated config.ts to read `window.__API_BASE_URL__`
+   - Fixed: All fetch calls now use `apiUrl()` or `buildUrl()`
+   - Commit: 88af327
+
 ### Tasks
 
-#### 7.1 Test API Endpoints
+#### 8.1 Test API Endpoints
 ```bash
 # Test health check
 curl $API_ENDPOINT/api/health
