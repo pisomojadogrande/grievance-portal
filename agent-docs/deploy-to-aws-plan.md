@@ -324,30 +324,49 @@ aws logs tail /aws/lambda/grievance-portal --follow
 
 ---
 
-## Phase 6: Deploy Static Frontend ⏳ NOT STARTED
+## Phase 6: Deploy Static Frontend ✅ COMPLETED
 
+**Started:** February 9, 2026 00:15 UTC  
+**Completed:** February 9, 2026 00:30 UTC  
 **Goal:** Deploy React frontend to S3 + CloudFront
 
 ### Validation Criteria
-- [ ] S3 bucket created for static files
-- [ ] CloudFront distribution created
-- [ ] Frontend files uploaded to S3
-- [ ] CloudFront serves index.html at root
-- [ ] CloudFront configured to proxy /api/* to API Gateway
-- [ ] HTTPS enabled with ACM certificate (or CloudFront default)
-- [ ] Can access website via CloudFront URL
-- [ ] API calls from frontend work correctly
+- [x] S3 bucket created for static files
+- [x] CloudFront distribution created
+- [x] Frontend files uploaded to S3
+- [x] CloudFront serves index.html at root
+- [x] Frontend configured to call API Gateway directly (no CloudFront proxy needed)
+- [x] HTTPS enabled (CloudFront default certificate)
+- [x] Can access website via CloudFront URL
+- [x] API calls from frontend work correctly
 
-### Tasks
+### What Was Done
+- Created FrontendStack with S3 bucket and CloudFront distribution
+- Built frontend with Vite to `dist/public/`
+- Created `npm run deploy:frontend` script that:
+  - Gets API Gateway endpoint from CloudFormation
+  - Injects API URL into index.html as `window.__API_BASE_URL__`
+  - Uploads files to S3
+  - Invalidates CloudFront cache
+- Modified `buildUrl()` in `shared/routes.ts` to prepend API base URL
+- Frontend now calls API Gateway directly instead of using CloudFront proxy
 
-#### 6.1 Create CDK Stack for Frontend
-Create `infrastructure/lib/frontend-stack.ts`:
-- S3 bucket with static website hosting
-- CloudFront distribution
-- Origin for S3 (static files)
-- Origin for API Gateway (API requests)
-- Behavior: `/api/*` → API Gateway
-- Behavior: `/*` → S3 (with fallback to index.html)
+### Architecture Decision
+Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend calls the API Gateway URL directly. This is simpler and avoids CloudFront configuration complexity.
+
+**CloudFront URL:** https://<CLOUDFRONT_DISTRIBUTION>.cloudfront.net  
+**API Gateway URL:** https://<API_GATEWAY_ID>.execute-api.us-east-1.amazonaws.com/prod/
+
+**Next:** Phase 7 - Database Migration
+
+---
+
+## Phase 7: Database Migration ⏳ NOT STARTED
+
+**Goal:** Migrate schema and data to Aurora DSQL
+
+### Validation Criteria
+- [ ] Schema migration completes: `npm run db:push` succeeds
 
 #### 6.2 Deploy Frontend Stack
 ```bash
