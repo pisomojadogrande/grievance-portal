@@ -31,9 +31,10 @@ export class FrontendStack extends cdk.Stack {
       additionalBehaviors: {
         '/api/*': {
           origin: new origins.HttpOrigin(
-            cdk.Fn.select(2, cdk.Fn.split('/', props.apiEndpoint)), // Extract domain from URL
+            cdk.Fn.select(2, cdk.Fn.split('/', props.apiEndpoint)), // Extract domain from https://xxx.execute-api.region.amazonaws.com/prod/
             {
               protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+              originPath: '/prod', // API Gateway stage
             }
           ),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
