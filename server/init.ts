@@ -6,7 +6,9 @@ export async function initializeApp() {
   if (initialized) return;
   
   // Load SSM parameters into environment variables
-  if (process.env.AWS_EXECUTION_ENV) {
+  // In Lambda, always load from SSM
+  // Locally, only load if DATABASE_URL is not already set
+  if (process.env.AWS_EXECUTION_ENV || !process.env.DATABASE_URL) {
     const params = await getParameters();
     
     // Map SSM parameters to environment variables
