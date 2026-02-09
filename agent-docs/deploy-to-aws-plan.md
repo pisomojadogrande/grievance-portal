@@ -288,42 +288,6 @@ aws cognito-idp list-users --user-pool-id $USER_POOL_ID
 
 ---
 
-## Phase 6: Deploy Static Frontend (S3 + CloudFront)
-
-**Goal:** Serve React frontend from S3 + CloudFront instead of Lambda
-
-### Validation Criteria
-- [ ] CDK deployment succeeds: `cdk deploy FrontendStack`
-
-#### 5.2 Deploy Compute Stack
-```bash
-cd infrastructure
-
-# Deploy Lambda + API Gateway
-cdk deploy ComputeStack
-
-# Get API endpoint from output
-API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ComputeStack \
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text)
-
-echo "API Endpoint: $API_ENDPOINT"
-```
-
-#### 5.3 Test Deployment
-```bash
-# Test health check
-curl $API_ENDPOINT/api/health
-
-# Should return: {"status":"healthy","timestamp":"..."}
-
-# Check Lambda logs
-aws logs tail /aws/lambda/grievance-portal --follow
-```
-
-**Estimated Time:** 1-2 hours
-
----
-
 ## Phase 6: Deploy Static Frontend ✅ COMPLETED
 
 **Started:** February 9, 2026 00:15 UTC  
@@ -361,57 +325,6 @@ Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend cal
 
 ---
 
-## Phase 7: Database Migration ⏳ NOT STARTED
-
-**Goal:** Migrate schema and data to Aurora DSQL
-
-### Validation Criteria
-- [ ] Schema migration completes: `npm run db:push` succeeds
-
-#### 6.2 Deploy Frontend Stack
-```bash
-cd infrastructure
-npx cdk deploy GrievancePortalFrontendStack
-```
-
-#### 6.3 Upload Frontend Files
-```bash
-# Get S3 bucket name from stack output
-BUCKET_NAME=$(aws cloudformation describe-stacks \
-  --stack-name GrievancePortalFrontendStack \
-  --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
-  --output text)
-
-# Upload built frontend
-aws s3 sync dist/public/ s3://$BUCKET_NAME/ --delete
-
-# Invalidate CloudFront cache
-DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-  --stack-name GrievancePortalFrontendStack \
-  --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' \
-  --output text)
-
-aws cloudfront create-invalidation \
-  --distribution-id $DISTRIBUTION_ID \
-  --paths "/*"
-```
-
-#### 6.4 Test Frontend
-```bash
-# Get CloudFront URL
-CLOUDFRONT_URL=$(aws cloudformation describe-stacks \
-  --stack-name GrievancePortalFrontendStack \
-  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' \
-  --output text)
-
-# Test in browser
-echo "Visit: $CLOUDFRONT_URL"
-```
-
-**Estimated Time:** 2-3 hours
-
----
-
 ## Phase 7: Database Migration ✅ COMPLETED
 
 **Started:** February 9, 2026 00:43 UTC  
@@ -439,31 +352,6 @@ echo "Visit: $CLOUDFRONT_URL"
 - DSQL requires IAM authentication (can't use psql with password)
 
 **Next:** Phase 8 - End-to-End Testing
-
----
-
-## Phase 8: End-to-End Testing ⏳ NOT STARTED
-
-**Goal:** Verify full application functionality
-
-### Validation Criteria
-- [ ] Health check returns 200: `curl $API_ENDPOINT/api/health`
-for file in backup_part_*; do
-  psql $DSQL_URL < $file
-done
-```
-
-#### 7.3 Verify Migration
-```bash
-# Check row counts
-psql $DSQL_URL -c "SELECT COUNT(*) FROM complaints;"
-psql $DSQL_URL -c "SELECT COUNT(*) FROM payments;"
-
-# Test sample queries
-psql $DSQL_URL -c "SELECT * FROM complaints LIMIT 5;"
-```
-
-**Estimated Time:** 1-2 hours
 
 ---
 
