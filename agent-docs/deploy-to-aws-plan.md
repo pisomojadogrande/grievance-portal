@@ -30,9 +30,9 @@ Migrate the Replit-based Grievance Portal to AWS using a serverless architecture
 2. ✅ **Phase 2: CDK Infrastructure Code** - Create stack definitions
 3. ✅ **Phase 3: Application Refactoring** - Make code AWS-compatible
 4. ✅ **Phase 4: Deploy Core Infrastructure** - DSQL, SSM, Cognito
-5. ⏳ **Phase 5: Deploy Application API** - Lambda + API Gateway (API only)
-6. ⏳ **Phase 6: Deploy Static Frontend** - S3 + CloudFront for React app
-7. ⏳ **Phase 7: Database Migration** - Migrate schema and data
+5. ✅ **Phase 5: Deploy Application API** - Lambda + API Gateway (API only)
+6. ✅ **Phase 6: Deploy Static Frontend** - S3 + CloudFront for React app
+7. ✅ **Phase 7: Database Migration** - Migrate schema and data
 8. ⏳ **Phase 8: End-to-End Testing** - Verify full functionality
 9. ⏳ **Phase 9: CI/CD Pipeline** - Automate deployments
 10. ⏳ **Phase 10: Production Hardening** - Monitoring, security, costs
