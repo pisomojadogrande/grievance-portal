@@ -11,6 +11,8 @@ import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
+import { apiUrl } from "@/config";
+
 export default function Status() {
   const [, params] = useRoute("/status/:id");
   const [, setLocation] = useLocation();
@@ -30,7 +32,7 @@ export default function Status() {
       const verifyPayment = async () => {
         try {
           if (sessionId) {
-            const response = await fetch('/api/stripe/verify-session', {
+            const response = await fetch(apiUrl('/api/stripe/verify-session'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ sessionId, complaintId: id }),

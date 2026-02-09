@@ -12,12 +12,14 @@ import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 
 // Lazy-load Stripe with publishable key from server
+import { apiUrl } from "@/config";
+
 let stripePromise: Promise<Stripe | null> | null = null;
 let stripeLoadError: string | null = null;
 
 function getStripePromise(): Promise<Stripe | null> {
   if (!stripePromise) {
-    stripePromise = fetch('/api/stripe/config')
+    stripePromise = fetch(apiUrl('/api/stripe/config'))
       .then(res => {
         if (!res.ok) throw new Error('Failed to load payment configuration');
         return res.json();
@@ -69,7 +71,7 @@ export default function Payment() {
   }, []);
 
   const fetchClientSecret = useCallback(async () => {
-    const response = await fetch('/api/stripe/create-checkout-session', {
+    const response = await fetch(apiUrl('/api/stripe/create-checkout-session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ complaintId: id }),

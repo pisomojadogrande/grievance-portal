@@ -36,7 +36,7 @@ export function useCreateComplaint() {
   return useMutation({
     mutationFn: async (data: InsertComplaint) => {
       const validated = api.complaints.create.input.parse(data);
-      const res = await fetch(api.complaints.create.path, {
+      const res = await fetch(buildUrl(api.complaints.create.path), {
         method: api.complaints.create.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(validated),
@@ -78,7 +78,7 @@ export function useProcessPayment() {
       // We parse against the input schema defined in routes
       const validated = api.payments.process.input.parse(data);
       
-      const res = await fetch(api.payments.process.path, {
+      const res = await fetch(buildUrl(api.payments.process.path), {
         method: api.payments.process.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(validated),
