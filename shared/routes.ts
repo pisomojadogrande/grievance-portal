@@ -56,6 +56,13 @@ export const api = {
   },
 };
 
+// API base URL - set via VITE_API_URL environment variable
+// In production: points to API Gateway (e.g., https://xxx.execute-api.us-east-1.amazonaws.com/prod)
+// In development: empty string (uses relative paths proxied by Vite)
+const API_BASE_URL = typeof window !== 'undefined' 
+  ? (window as any).__API_BASE_URL__ || ''
+  : '';
+
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
   let url = path;
   if (params) {
@@ -65,5 +72,5 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
       }
     });
   }
-  return url;
+  return API_BASE_URL + url;
 }

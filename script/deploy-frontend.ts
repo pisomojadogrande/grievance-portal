@@ -6,6 +6,7 @@
  */
 
 import { execSync } from 'child_process';
+import { readFile, writeFile } from 'fs/promises';
 
 function exec(command: string) {
   console.log(`> ${command}`);
@@ -30,9 +31,33 @@ if (!bucketName || !distributionId) {
   process.exit(1);
 }
 
+// Get API endpoint from ComputeStack
+const computeOutputs = execSync(
+  'aws cloudformation describe-stacks --stack-name GrievancePortalComputeStack --query "Stacks[0].Outputs" --output json',
+  { encoding: 'utf-8' }
+);
+const computeParsed = JSON.parse(computeOutputs);
+const apiEndpoint = computeParsed.find((o: any) => o.OutputKey === 'ApiEndpoint')?.OutputValue;
+
+if (!apiEndpoint) {
+  console.error('Error: Could not find API endpoint');
+  process.exit(1);
+}
+
 console.log(`Bucket: ${bucketName}`);
 console.log(`Distribution: ${distributionId}`);
+console.log(`API Endpoint: ${apiEndpoint}`);
 console.log(`URL: ${cloudFrontUrl}\n`);
+
+// Inject API URL into index.html
+console.log('Injecting API URL into index.html...');
+const indexPath = 'dist/public/index.html';
+let html = await readFile(indexPath, 'utf-8');
+html = html.replace(
+  '<head>',
+  `<head>\n    <script>window.__API_BASE_URL__ = '${apiEndpoint}';</script>`
+);
+await writeFile(indexPath, html);
 
 // Upload files to S3
 exec(`aws s3 sync dist/public/ s3://${bucketName}/ --delete --cache-control "public,max-age=31536000,immutable"`);
