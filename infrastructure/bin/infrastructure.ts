@@ -4,6 +4,7 @@ import { ParametersStack } from '../lib/parameters-stack';
 import { DatabaseStack } from '../lib/database-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { ComputeStack } from '../lib/compute-stack';
+import { FrontendStack } from '../lib/frontend-stack';
 import { PipelineStack } from '../lib/pipeline-stack';
 
 const app = new cdk.App();
@@ -23,6 +24,13 @@ const computeStack = new ComputeStack(app, 'GrievancePortalComputeStack', { env 
 computeStack.addDependency(parametersStack);
 computeStack.addDependency(databaseStack);
 computeStack.addDependency(authStack);
+
+// Frontend stack depends on compute stack (needs API endpoint)
+const frontendStack = new FrontendStack(app, 'GrievancePortalFrontendStack', {
+  env,
+  apiEndpoint: computeStack.apiEndpoint,
+});
+frontendStack.addDependency(computeStack);
 
 // Pipeline stack depends on compute stack
 const pipelineStack = new PipelineStack(app, 'GrievancePortalPipelineStack', {

@@ -8,6 +8,7 @@ import { Construct } from 'constructs';
 export class ComputeStack extends cdk.Stack {
   public readonly lambdaFunction: lambda.Function;
   public readonly api: apigateway.RestApi;
+  public readonly apiEndpoint: string;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -66,6 +67,9 @@ export class ComputeStack extends cdk.Stack {
       defaultIntegration: integration,
       anyMethod: true,
     });
+
+    // Store API endpoint for use by other stacks
+    this.apiEndpoint = this.api.url;
 
     // Outputs
     new cdk.CfnOutput(this, 'ApiEndpoint', {
