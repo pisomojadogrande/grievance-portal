@@ -6,8 +6,8 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { getDb, getPool } from './server/db';
-import { initializeApp } from './server/init';
+import { getDb, getPool } from '../server/db.js';
+import { initializeApp } from '../server/init.js';
 
 async function createTables() {
   console.log('Loading configuration from SSM...');
