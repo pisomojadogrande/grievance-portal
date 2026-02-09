@@ -2,6 +2,15 @@ import { getDb } from "./db";
 import { complaints, payments, type Complaint, type InsertComplaint, type Payment, type InsertPayment } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 
+// Generate next ID for a table (DSQL doesn't support auto-increment)
+async function getNextId(tableName: string): Promise<number> {
+  const result = await getDb().execute(sql`
+    SELECT COALESCE(MAX(id), 0) + 1 as next_id 
+    FROM ${sql.identifier(tableName)}
+  `);
+  return (result.rows[0] as any).next_id;
+}
+
 export interface IStorage {
   // Complaints
   createComplaint(complaint: InsertComplaint): Promise<Complaint>;
@@ -18,7 +27,8 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async createComplaint(insertComplaint: InsertComplaint): Promise<Complaint> {
-    const [complaint] = await getDb().insert(complaints).values(insertComplaint).returning();
+    const id = await getNextId('complaints');
+    const [complaint] = await getDb().insert(complaints).values({ ...insertComplaint, id }).returning();
     return complaint;
   }
 
@@ -36,7 +46,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPayment(insertPayment: InsertPayment): Promise<Payment> {
-    const [payment] = await getDb().insert(payments).values(insertPayment).returning();
+    const id = await getNextId('payments');
+    const [payment] = await getDb().insert(payments).values({ ...insertPayment, id }).returning();
     return payment;
   }
 

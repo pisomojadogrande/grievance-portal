@@ -18,15 +18,10 @@ async function createTables() {
   
   console.log('Creating tables...\n');
 
-  // Create sequences for auto-increment IDs
-  await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS admin_users_id_seq`);
-  await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS complaints_id_seq`);
-  await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS payments_id_seq`);
-
-  // Create admin_users table
+  // Create admin_users table with INTEGER id (manual management)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS admin_users (
-      id INTEGER PRIMARY KEY DEFAULT nextval('admin_users_id_seq'),
+      id INTEGER PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
@@ -35,10 +30,10 @@ async function createTables() {
   `);
   console.log('✓ admin_users table created');
 
-  // Create complaints table
+  // Create complaints table with INTEGER id (manual management)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS complaints (
-      id INTEGER PRIMARY KEY DEFAULT nextval('complaints_id_seq'),
+      id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL,
       complaint TEXT NOT NULL,
@@ -49,10 +44,10 @@ async function createTables() {
   `);
   console.log('✓ complaints table created');
 
-  // Create payments table
+  // Create payments table with INTEGER id (manual management)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS payments (
-      id INTEGER PRIMARY KEY DEFAULT nextval('payments_id_seq'),
+      id INTEGER PRIMARY KEY,
       complaint_id INTEGER NOT NULL,
       stripe_payment_intent_id TEXT NOT NULL UNIQUE,
       amount INTEGER NOT NULL,

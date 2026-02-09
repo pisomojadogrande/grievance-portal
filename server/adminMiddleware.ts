@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { getDb } from "./db";
 import { adminUsers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 // Middleware to check if user is admin (supports both Replit Auth and password-based auth)
@@ -72,11 +72,22 @@ export async function isAdminById(adminId: number): Promise<boolean> {
   return !!adminUser;
 }
 
+// Generate next ID for a table (DSQL doesn't support auto-increment)
+async function getNextId(tableName: string): Promise<number> {
+  const result = await getDb().execute(sql`
+    SELECT COALESCE(MAX(id), 0) + 1 as next_id 
+    FROM ${sql.identifier(tableName)}
+  `);
+  return (result.rows[0] as any).next_id;
+}
+
 // Create a new admin with email/password
 export async function createAdminWithPassword(email: string, password: string): Promise<{ id: number; email: string }> {
   const passwordHash = await bcrypt.hash(password, 10);
+  const id = await getNextId('admin_users');
   
   const [newAdmin] = await getDb().insert(adminUsers).values({
+    id,
     email,
     passwordHash,
   }).returning({ id: adminUsers.id, email: adminUsers.email });
