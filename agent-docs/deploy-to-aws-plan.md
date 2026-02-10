@@ -372,24 +372,18 @@ Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend cal
 - ✅ Complaint submission now works end-to-end!
 - ❌ AI response too short/generic - needs better prompt for verbose bureaucratic responses
 
-**2026-02-10 02:20 UTC** - Phase 8 progress checkpoint:
-- ✅ Can successfully submit complaints through UI
-- ✅ Stripe payment integration working
-- ✅ Database storing complaints correctly
-- ✅ Improved Bedrock prompt to generate verbose, multi-paragraph bureaucratic responses
-  - Increased max_tokens from 2048 to 4096
-  - Added detailed instructions for 4-8 paragraph responses with bureaucratic jargon
-  - Matches style of original Replit app responses
-- ✅ Code built and committed (commit 6ad872d)
-- ⏳ **NEXT**: Human needs to deploy Lambda with admin credentials
+**2026-02-10 03:00 UTC** - Phase 8 improvements:
+- ✅ Reverted to original simpler prompt (matches Replit version)
+- ✅ Fixed favicon - replaced Replit icon with scale/balance SVG
+- ✅ Created safety branch: phase8-current-progress
+- ⏳ **NEXT**: Deploy Lambda and test AI responses
 
-**Current Status:** Ready for human to deploy updated Lambda function
+**Remaining Phase 8 Tasks:**
+- [ ] Test admin portal login with Cognito
+- [ ] Test Stripe webhook (optional - not critical for MVP)
+- [ ] Load testing (optional - can defer to Phase 10)
 
-**Deployment Command for Human:**
-```bash
-cd infrastructure
-npx cdk deploy GrievancePortalComputeStack --require-approval never
-```
+**Current Status:** Ready to deploy and complete Phase 8 testing
 
 ### Validation Criteria
 - [x] Health check returns 200: `curl $API_ENDPOINT/api/health`
