@@ -387,14 +387,13 @@ Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend cal
 
 ### Validation Criteria
 - [x] Health check returns 200: `curl $API_ENDPOINT/api/health`
-- [ ] Can submit complaint through UI (fixed, needs deployment)
-- [ ] Stripe payment completes (test card 4242...)
-- [ ] AI response generated via Bedrock
+- [x] Can submit complaint through UI
+- [x] Stripe payment completes (test card 4242...)
+- [x] AI response generated via Bedrock
 - [ ] Admin can login with Cognito credentials
 - [ ] Admin can view complaints in admin portal
-- [ ] Stripe webhook processes successfully
-- [ ] Load test completes: 100 concurrent requests without errors
-- [ ] No errors in CloudWatch logs during testing
+- [ ] Load test completes: 100 concurrent requests without errors (deferred to Phase 10)
+- [x] No errors in CloudWatch logs during testing
 
 ### Issues Found & Fixed
 1. **Frontend API calls going to CloudFront instead of API Gateway**
@@ -422,34 +421,13 @@ curl $API_ENDPOINT/api/stripe/publishable-key
 5. Verify AI response is generated
 6. Check CloudWatch logs for any errors
 
-#### 7.3 Test Admin Portal
+#### 8.3 Test Admin Portal
 1. Navigate to admin portal: `$API_ENDPOINT/admin`
 2. Login with Cognito credentials
 3. Verify can view submitted complaints
 4. Verify can see AI responses
 
-#### 7.4 Test Stripe Webhook
-```bash
-# Update Stripe webhook URL in Stripe Dashboard
-# URL: $API_ENDPOINT/api/stripe/webhook
-
-# Test webhook with Stripe CLI
-stripe listen --forward-to $API_ENDPOINT/api/stripe/webhook
-stripe trigger payment_intent.succeeded
-```
-
-#### 7.5 Load Testing
-```bash
-# Run load test (100 requests, 10 concurrent)
-ab -n 100 -c 10 $API_ENDPOINT/api/health
-
-# Verify:
-# - All requests succeed (200 OK)
-# - No failed requests
-# - Reasonable response times (<1s for warm Lambda)
-```
-
-**Estimated Time:** 2-3 hours
+**Estimated Time:** 1-2 hours
 
 ---
 
@@ -732,3 +710,30 @@ aws codepipeline get-pipeline-state --name grievance-portal-pipeline
 - Phase 9: Production Hardening - 2-3 hours
 
 **Remaining Time:** 11-18 hours (1.5-2.5 days)
+
+---
+
+## Future Enhancements
+
+### Stripe Webhook Implementation
+
+**Current Status:** Not implemented. Payment verification uses polling approach via `/api/stripe/verify-session`.
+
+**Why Consider Webhooks:**
+- **Reliability**: Webhooks provide async confirmation even if user closes browser
+- **Edge Cases**: Handle payment failures, disputes, refunds automatically
+- **Scalability**: Reduces polling load on Stripe API
+- **Real-time**: Instant notification of payment events
+
+**Current Approach Works Because:**
+- Simple happy-path flow (user pays → immediate verification)
+- Low volume doesn't strain Stripe API rate limits
+- User stays on page during payment
+
+**Implementation Effort:** 2-3 hours
+- Configure webhook endpoint in Stripe Dashboard
+- Add webhook signature verification
+- Handle `payment_intent.succeeded` and `payment_intent.failed` events
+- Test with Stripe CLI
+
+**Priority:** Low for MVP, Medium for production scale
