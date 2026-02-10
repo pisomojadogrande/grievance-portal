@@ -505,8 +505,10 @@ STYLE EXAMPLES:
 - "Your feedback will be incorporated into our ongoing, multi-phase procedural review..."
 - "No further action is required on your part at this time..."
 
+CRITICAL: Return ONLY valid JSON with properly escaped strings. Use \\n for newlines within the responseText string.
+
 Return your response in JSON format with two fields:
-- responseText: The bureaucratic letter (4-8 paragraphs, very verbose)
+- responseText: The bureaucratic letter (4-8 paragraphs, very verbose, with \\n for paragraph breaks)
 - complexityScore: The integer score (1-10)`;
 
     const userPrompt = `Complaint: "${content}"`;
