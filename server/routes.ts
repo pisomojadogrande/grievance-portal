@@ -516,13 +516,29 @@ Return your response in JSON format with two fields:
       cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
     
-    const aiResult = JSON.parse(cleanedResponse);
-    
-    await storage.updateComplaint(complaintId, {
-      status: "resolved",
-      aiResponse: aiResult.responseText || "Your complaint has been received and filed in the circular bin.",
-      complexityScore: aiResult.complexityScore || 5
-    });
+    // Parse with lenient handling - replace literal newlines with \n
+    try {
+      const aiResult = JSON.parse(cleanedResponse);
+      
+      await storage.updateComplaint(complaintId, {
+        status: "resolved",
+        aiResponse: aiResult.responseText || "Your complaint has been received and filed in the circular bin.",
+        complexityScore: aiResult.complexityScore || 5
+      });
+    } catch (parseError) {
+      // Try fixing newlines in JSON strings
+      const fixed = cleanedResponse.replace(/"responseText":\s*"([^"]*)"/gs, (match, content) => {
+        const escaped = content.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
+        return `"responseText": "${escaped}"`;
+      });
+      const aiResult = JSON.parse(fixed);
+      
+      await storage.updateComplaint(complaintId, {
+        status: "resolved",
+        aiResponse: aiResult.responseText || "Your complaint has been received and filed in the circular bin.",
+        complexityScore: aiResult.complexityScore || 5
+      });
+    }
     console.log(`[AI] Successfully resolved complaint #${complaintId}`);
 
   } catch (error) {
