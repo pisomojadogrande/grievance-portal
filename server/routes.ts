@@ -492,6 +492,9 @@ Use bureaucratic jargon like "stakeholder alignment," "procedural review," "band
 
 You must also assign a "Complexity Score" from 1 to 10 based on how annoying or difficult this complaint seems.
 
+IMPORTANT: When signing the letter, use an officious title but DO NOT use placeholder names like [Your Name]. 
+Either omit the name entirely or use a generic bureaucratic title like "Senior Complaint Analysis Officer" or "Chief Processing Administrator".
+
 Return your response in JSON format with two fields:
 - responseText: The bureaucratic letter.
 - complexityScore: The integer score.`;
