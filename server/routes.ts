@@ -508,8 +508,14 @@ Return your response in JSON format with two fields:
 
     console.log(`[AI] Response for #${complaintId}:`, responseText);
     
-    // Strip markdown code fences if present
+    // Strip any preamble text before JSON
     let cleanedResponse = responseText.trim();
+    const jsonStart = cleanedResponse.indexOf('{');
+    if (jsonStart > 0) {
+      cleanedResponse = cleanedResponse.substring(jsonStart);
+    }
+    
+    // Strip markdown code fences if present
     if (cleanedResponse.startsWith('```json')) {
       cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     } else if (cleanedResponse.startsWith('```')) {
