@@ -15,7 +15,8 @@ export interface ChatCompletionOptions {
 }
 
 export async function createChatCompletion(options: ChatCompletionOptions): Promise<string> {
-  const modelId = options.model || 'anthropic.claude-3-5-sonnet-20240620-v1:0';
+  // Using inference profile for better availability and cross-region routing
+  const modelId = options.model || 'us.anthropic.claude-3-5-sonnet-20241022-v2:0';
   
   const payload = {
     anthropic_version: "bedrock-2023-05-31",
