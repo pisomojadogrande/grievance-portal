@@ -538,7 +538,7 @@ Return your response in JSON format with two fields:
     } catch (parseError) {
       console.log(`[AI] First parse failed, trying to fix newlines...`);
       // Try fixing newlines in JSON strings
-      const fixed = cleanedResponse.replace(/"responseText":\s*"([^"]*)"/gs, (match, content) => {
+      const fixed = cleanedResponse.replace(/"responseText":\s*"([^"]*)"/g, (match, content) => {
         const escaped = content.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
         return `"responseText": "${escaped}"`;
       });

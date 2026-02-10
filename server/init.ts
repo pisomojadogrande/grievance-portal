@@ -17,6 +17,8 @@ export async function initializeApp() {
     process.env.STRIPE_PUBLISHABLE_KEY = params['stripe/publishable-key'];
     process.env.STRIPE_WEBHOOK_SECRET = params['stripe/webhook-secret'];
     process.env.SESSION_SECRET = params['session/secret'];
+    process.env.COGNITO_USER_POOL_ID = params['cognito/user-pool-id'];
+    process.env.COGNITO_CLIENT_ID = params['cognito/client-id'];
   }
   
   initialized = true;

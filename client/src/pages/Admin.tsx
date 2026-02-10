@@ -73,13 +73,17 @@ export default function Admin() {
     enabled: isAuthenticated && isAdmin && isFirstAdminUser,
   });
 
-  // Password login mutation
+  // Cognito login mutation
   const loginMutation = useMutation({
     mutationFn: async (data: { email: string; password: string }) => {
       const res = await apiRequest("POST", "/api/admin/login", data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Store JWT token in localStorage
+      if (data.idToken) {
+        localStorage.setItem('adminToken', data.idToken);
+      }
       toast({ title: "Login successful" });
       refetchAuthStatus();
       queryClient.invalidateQueries({ queryKey: ["/api/admin/complaints"] });
@@ -91,11 +95,12 @@ export default function Admin() {
     },
   });
 
-  // Password logout mutation
+  // Logout mutation
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/logout");
-      return res.json();
+      // Clear token from localStorage
+      localStorage.removeItem('adminToken');
+      return Promise.resolve();
     },
     onSuccess: () => {
       toast({ title: "Logged out" });
