@@ -57,10 +57,10 @@ export const api = {
 };
 
 // API base URL - set via VITE_API_URL environment variable
-// In production: points to API Gateway (e.g., https://xxx.execute-api.us-east-1.amazonaws.com/prod)
+// In production: points to API Gateway (injected via meta tag)
 // In development: empty string (uses relative paths proxied by Vite)
-const API_BASE_URL = typeof window !== 'undefined' 
-  ? (window as any).__API_BASE_URL__ || ''
+const API_BASE_URL = typeof document !== 'undefined' 
+  ? document.querySelector('meta[name="api-base-url"]')?.getAttribute('content') || ''
   : '';
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
@@ -72,5 +72,9 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
       }
     });
   }
-  return API_BASE_URL + url;
+  // Remove leading slash from path if API_BASE_URL ends with slash
+  const cleanPath = API_BASE_URL.endsWith('/') && url.startsWith('/') ? url.slice(1) : url;
+  const fullUrl = API_BASE_URL + cleanPath;
+  console.log('[buildUrl]', { path, API_BASE_URL, fullUrl, metaTag: typeof document !== 'undefined' ? document.querySelector('meta[name="api-base-url"]')?.getAttribute('content') : 'N/A' });
+  return fullUrl;
 }

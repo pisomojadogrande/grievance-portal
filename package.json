@@ -10,6 +10,7 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:create": "tsx script/create-tables.ts",
+    "db:restore": "tsx script/restore-data.ts",
     "package:lambda": "rm -f lambda.zip && cd dist && cp lambda.cjs index.js && zip -r ../lambda.zip index.js && cd ..",
     "deploy:frontend": "tsx script/deploy-frontend.ts"
   },

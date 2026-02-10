@@ -30,3 +30,8 @@ export async function getParameters(): Promise<Record<string, string>> {
   }
   return cachedParams;
 }
+
+export async function getParameter(key: string): Promise<string | undefined> {
+  const params = await getParameters();
+  return params[key.replace('/grievance-portal/', '')];
+}

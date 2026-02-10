@@ -368,9 +368,21 @@ Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend cal
 - ❌ Complaint submission failing - frontend was calling CloudFront instead of API Gateway
 - 🔧 Fixed: Updated all frontend fetch calls to use `apiUrl()` helper
 - 🔧 Fixed: Updated `buildUrl()` usage in use-complaints.ts
-- ⏳ **NEXT**: Deploy frontend with fixes and test complaint submission
+- ✅ Frontend deployed with fixes
+- ✅ Complaint submission now works end-to-end!
+- ❌ AI response too short/generic - needs better prompt for verbose bureaucratic responses
 
-**Current Status:** Frontend code fixed, needs deployment via `npm run deploy:frontend`
+**2026-02-10 02:20 UTC** - Phase 8 progress checkpoint:
+- ✅ Can successfully submit complaints through UI
+- ✅ Stripe payment integration working
+- ✅ Database storing complaints correctly
+- ✅ Improved Bedrock prompt to generate verbose, multi-paragraph bureaucratic responses
+  - Increased max_tokens from 2048 to 4096
+  - Added detailed instructions for 4-8 paragraph responses with bureaucratic jargon
+  - Matches style of original Replit app responses
+- ⏳ **NEXT**: Deploy updated Lambda and test AI response quality
+
+**Current Status:** Code updated and built, ready to deploy Lambda function
 
 ### Validation Criteria
 - [x] Health check returns 200: `curl $API_ENDPOINT/api/health`
@@ -527,6 +539,8 @@ aws lambda get-function --function-name grievance-portal --query 'Configuration.
 - [ ] CloudWatch alarms created and in "OK" state
 - [ ] Test alarm: Trigger condition and verify alarm fires
 - [ ] Lambda IAM role has minimum required permissions
+- [ ] DSQL application user created with minimal grants (not using admin)
+- [ ] Lambda connects with dsql:DbConnect (not DbConnectAdmin)
 - [ ] API Gateway throttling configured (100 req/sec rate, 200 burst)
 - [ ] Test throttling: Burst requests return 429
 - [ ] HTTPS enforced on API Gateway
@@ -560,7 +574,27 @@ ab -n 300 -c 50 $API_ENDPOINT/api/health
 aws logs tail /aws/lambda/grievance-portal | grep -i "password\|secret\|key"
 ```
 
-#### 9.3 Set Up Cost Monitoring
+#### 9.3 Create DSQL Application User
+Currently the Lambda connects to DSQL as `admin` user (requires `dsql:DbConnectAdmin`). 
+Create a dedicated application user with minimal permissions:
+
+```bash
+# Connect to DSQL as admin
+psql $DSQL_URL
+
+# Create application user
+CREATE USER grievance_app;
+
+# Grant only necessary permissions
+GRANT SELECT, INSERT, UPDATE ON complaints TO grievance_app;
+GRANT SELECT, INSERT, UPDATE ON payments TO grievance_app;
+GRANT SELECT ON admin_users TO grievance_app;
+
+# Update server/db.ts to use 'grievance_app' instead of 'admin'
+# Update Lambda IAM policy to use dsql:DbConnect instead of dsql:DbConnectAdmin
+```
+
+#### 9.4 Set Up Cost Monitoring
 ```bash
 # Create AWS Budget alert
 aws budgets create-budget \

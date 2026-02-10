@@ -49,22 +49,50 @@ console.log(`Distribution: ${distributionId}`);
 console.log(`API Endpoint: ${apiEndpoint}`);
 console.log(`URL: ${cloudFrontUrl}\n`);
 
-// Inject API URL into index.html
+// Inject API URL into index.html as meta tag
 console.log('Injecting API URL into index.html...');
 const indexPath = 'dist/public/index.html';
 let html = await readFile(indexPath, 'utf-8');
 html = html.replace(
-  '<head>',
-  `<head>\n    <script>window.__API_BASE_URL__ = '${apiEndpoint}';</script>`
+  '</head>',
+  `  <meta name="api-base-url" content="${apiEndpoint}">\n  </head>`
 );
 await writeFile(indexPath, html);
 
 // Upload files to S3
-exec(`aws s3 sync dist/public/ s3://${bucketName}/ --delete --cache-control "public,max-age=31536000,immutable"`);
+// Assets get long cache, index.html gets no-cache
+exec(`aws s3 sync dist/public/ s3://${bucketName}/ --delete --exclude "index.html" --cache-control "public,max-age=31536000,immutable"`);
+exec(`aws s3 cp dist/public/index.html s3://${bucketName}/index.html --cache-control "no-cache"`);
 
 // Invalidate CloudFront cache
 console.log('\nInvalidating CloudFront cache...');
-exec(`aws cloudfront create-invalidation --distribution-id ${distributionId} --paths "/*"`);
+const invalidationOutput = execSync(
+  `aws cloudfront create-invalidation --distribution-id ${distributionId} --paths "/*" --output json`,
+  { encoding: 'utf-8' }
+);
+const invalidation = JSON.parse(invalidationOutput);
+const invalidationId = invalidation.Invalidation.Id;
+
+console.log(`Invalidation ID: ${invalidationId}`);
+console.log('Waiting for invalidation to complete...');
+
+// Wait for invalidation to complete
+while (true) {
+  const statusOutput = execSync(
+    `aws cloudfront get-invalidation --distribution-id ${distributionId} --id ${invalidationId} --output json`,
+    { encoding: 'utf-8' }
+  );
+  const status = JSON.parse(statusOutput);
+  const currentStatus = status.Invalidation.Status;
+  
+  if (currentStatus === 'Completed') {
+    console.log('✓ Invalidation completed');
+    break;
+  }
+  
+  process.stdout.write('.');
+  await new Promise(resolve => setTimeout(resolve, 2000));
+}
 
 console.log('\n✅ Frontend deployed successfully!');
 console.log(`Visit: ${cloudFrontUrl}`);

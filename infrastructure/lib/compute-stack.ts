@@ -42,6 +42,12 @@ export class ComputeStack extends cdk.Stack {
       resources: ['*'],
     }));
 
+    // Grant DSQL access
+    this.lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dsql:DbConnect', 'dsql:DbConnectAdmin'],
+      resources: ['*'],
+    }));
+
     // API Gateway
     this.api = new apigateway.RestApi(this, 'GrievancePortalApi', {
       restApiName: 'Grievance Portal API',

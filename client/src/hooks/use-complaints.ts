@@ -35,8 +35,11 @@ export function useCreateComplaint() {
 
   return useMutation({
     mutationFn: async (data: InsertComplaint) => {
+      console.log('[useCreateComplaint] Starting mutation', data);
       const validated = api.complaints.create.input.parse(data);
-      const res = await fetch(buildUrl(api.complaints.create.path), {
+      const url = buildUrl(api.complaints.create.path);
+      console.log('[useCreateComplaint] Built URL:', url);
+      const res = await fetch(url, {
         method: api.complaints.create.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(validated),

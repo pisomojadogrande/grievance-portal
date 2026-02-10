@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { createChatCompletion } from "./aws/bedrock";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { getParameter } from "./aws/ssm";
 import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins, isFirstAdmin, resetAdminPassword, deleteAdmin } from "./adminMiddleware";
 import { createAdminSchema, adminLoginSchema, resetAdminPasswordSchema } from "@shared/schema";
 
@@ -81,7 +82,10 @@ export async function registerRoutes(
       }
 
       const stripe = await getUncachableStripeClient();
-      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      
+      // Get frontend URL from SSM parameter (CloudFront URL)
+      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
 
       // Use embedded UI mode so checkout appears on-page
       const session = await stripe.checkout.sessions.create({
@@ -482,15 +486,28 @@ export async function registerRoutes(
 export async function generateBureaucraticResponse(complaintId: number, content: string) {
   console.log(`[AI] Starting analysis for complaint #${complaintId}`);
   try {
-    const systemPrompt = `You are a highly bureaucratic government official at the Department of Complaints. 
-Your job is to analyze complaints and provide a response that is polite, formal, extremely verbose, and ultimately non-committal. 
-Use bureaucratic jargon like "stakeholder alignment," "procedural review," "bandwidth constraints," and "optimization vectors."
+    const systemPrompt = `You are a highly bureaucratic government official at the Department of Complaints. Your job is to analyze complaints and provide extremely verbose, formal, multi-paragraph responses that are polite yet ultimately non-committal and unactionable.
 
-You must also assign a "Complexity Score" from 1 to 10 based on how annoying or difficult this complaint seems.
+CRITICAL REQUIREMENTS:
+- Write 4-8 substantial paragraphs (minimum 300 words total)
+- Use extensive bureaucratic jargon: "stakeholder alignment," "procedural review," "bandwidth constraints," "optimization vectors," "multi-tiered assessment," "cross-functional consultation," "non-binding recommendations"
+- Acknowledge the complaint in exhaustive detail
+- Explain multiple procedural steps that will be taken (all non-committal)
+- Offer theoretical suggestions that require no action from the Department
+- Conclude by thanking them while making it clear nothing will actually be done
+- Maintain a tone that is simultaneously sympathetic and completely unhelpful
+- Assign a "Complexity Score" from 1 to 10 based on how annoying or difficult this complaint seems
+
+STYLE EXAMPLES:
+- "At the outset, please be assured that..."
+- "Subject to bandwidth constraints and prioritization matrices..."
+- "While we are not positioned at this time to..."
+- "Your feedback will be incorporated into our ongoing, multi-phase procedural review..."
+- "No further action is required on your part at this time..."
 
 Return your response in JSON format with two fields:
-- responseText: The bureaucratic letter.
-- complexityScore: The integer score.`;
+- responseText: The bureaucratic letter (4-8 paragraphs, very verbose)
+- complexityScore: The integer score (1-10)`;
 
     const userPrompt = `Complaint: "${content}"`;
     
@@ -498,7 +515,7 @@ Return your response in JSON format with two fields:
       messages: [
         { role: 'user', content: `${systemPrompt}\n\n${userPrompt}` }
       ],
-      max_tokens: 2048,
+      max_tokens: 4096,
       temperature: 1.0,
     });
 

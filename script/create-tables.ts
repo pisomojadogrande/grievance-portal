@@ -18,13 +18,20 @@ async function createTables() {
   
   console.log('Creating tables...\n');
 
+  // Drop existing tables (in reverse order due to potential references)
+  console.log('Dropping existing tables if they exist...');
+  await db.execute(sql`DROP TABLE IF EXISTS payments CASCADE`);
+  await db.execute(sql`DROP TABLE IF EXISTS complaints CASCADE`);
+  await db.execute(sql`DROP TABLE IF EXISTS admin_users CASCADE`);
+  console.log('✓ Old tables dropped\n');
+
   // Create admin_users table with INTEGER id (manual management)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS admin_users (
       id INTEGER PRIMARY KEY,
-      username TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
+      user_id TEXT UNIQUE,
       email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `);
@@ -34,11 +41,12 @@ async function createTables() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS complaints (
       id INTEGER PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      complaint TEXT NOT NULL,
-      response TEXT,
-      status TEXT DEFAULT 'received' NOT NULL,
+      content TEXT NOT NULL,
+      customer_email TEXT NOT NULL,
+      status TEXT DEFAULT 'pending_payment' NOT NULL,
+      filing_fee INTEGER DEFAULT 500 NOT NULL,
+      ai_response TEXT,
+      complexity_score INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `);
@@ -49,9 +57,9 @@ async function createTables() {
     CREATE TABLE IF NOT EXISTS payments (
       id INTEGER PRIMARY KEY,
       complaint_id INTEGER NOT NULL,
-      stripe_payment_intent_id TEXT NOT NULL UNIQUE,
       amount INTEGER NOT NULL,
-      status TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' NOT NULL,
+      transaction_id TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `);
