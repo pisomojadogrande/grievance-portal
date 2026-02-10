@@ -531,7 +531,9 @@ Return your response in JSON format with two fields:
         aiResponse: aiResult.responseText || "Your complaint has been received and filed in the circular bin.",
         complexityScore: aiResult.complexityScore || 5
       });
+      console.log(`[AI] Successfully resolved complaint #${complaintId}`);
     } catch (parseError) {
+      console.log(`[AI] First parse failed, trying to fix newlines...`);
       // Try fixing newlines in JSON strings
       const fixed = cleanedResponse.replace(/"responseText":\s*"([^"]*)"/gs, (match, content) => {
         const escaped = content.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
@@ -544,6 +546,7 @@ Return your response in JSON format with two fields:
         aiResponse: aiResult.responseText || "Your complaint has been received and filed in the circular bin.",
         complexityScore: aiResult.complexityScore || 5
       });
+      console.log(`[AI] Successfully resolved complaint #${complaintId} after fixing newlines`);
     }
     console.log(`[AI] Successfully resolved complaint #${complaintId}`);
 
