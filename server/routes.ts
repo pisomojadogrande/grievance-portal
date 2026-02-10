@@ -520,7 +520,16 @@ Return your response in JSON format with two fields:
     });
 
     console.log(`[AI] Response for #${complaintId}:`, responseText);
-    const aiResult = JSON.parse(responseText);
+    
+    // Strip markdown code fences if present
+    let cleanedResponse = responseText.trim();
+    if (cleanedResponse.startsWith('```json')) {
+      cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanedResponse.startsWith('```')) {
+      cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    const aiResult = JSON.parse(cleanedResponse);
     
     await storage.updateComplaint(complaintId, {
       status: "resolved",

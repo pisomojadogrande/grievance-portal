@@ -380,9 +380,16 @@ Instead of proxying `/api/*` through CloudFront to API Gateway, the frontend cal
   - Increased max_tokens from 2048 to 4096
   - Added detailed instructions for 4-8 paragraph responses with bureaucratic jargon
   - Matches style of original Replit app responses
-- ⏳ **NEXT**: Deploy updated Lambda and test AI response quality
+- ✅ Code built and committed (commit 6ad872d)
+- ⏳ **NEXT**: Human needs to deploy Lambda with admin credentials
 
-**Current Status:** Code updated and built, ready to deploy Lambda function
+**Current Status:** Ready for human to deploy updated Lambda function
+
+**Deployment Command for Human:**
+```bash
+cd infrastructure
+npx cdk deploy GrievancePortalComputeStack --require-approval never
+```
 
 ### Validation Criteria
 - [x] Health check returns 200: `curl $API_ENDPOINT/api/health`
