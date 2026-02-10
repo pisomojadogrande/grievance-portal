@@ -6,8 +6,8 @@ import { z } from "zod";
 import { createChatCompletion } from "./aws/bedrock";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { getParameter } from "./aws/ssm";
-import { isAdmin, isAdminAuthenticated, getOrCreateFirstAdmin, isUserAdmin, isAdminById, createAdminWithPassword, authenticateAdmin, getAllAdmins, isFirstAdmin, resetAdminPassword, deleteAdmin } from "./adminMiddleware";
-import { createAdminSchema, adminLoginSchema, resetAdminPasswordSchema } from "@shared/schema";
+import { cognitoAuthMiddleware } from "./aws/cognito";
+import { adminLoginSchema } from "@shared/schema";
 
 // Temporary stub for authentication - will be replaced with Cognito
 const isAuthenticated = (req: any, res: any, next: any) => {
@@ -225,25 +225,7 @@ export async function registerRoutes(
 
   // === Admin Routes ===
 
-  app.get('/api/admin/check', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const email = req.user.claims.email || '';
-      
-      const isFirstAdmin = await getOrCreateFirstAdmin(userId, email);
-      const adminStatus = await isUserAdmin(userId);
-      
-      res.json({ 
-        isAdmin: adminStatus,
-        wasFirstAdmin: isFirstAdmin && adminStatus
-      });
-    } catch (err) {
-      console.error('Error checking admin status:', err);
-      res.status(500).json({ message: 'Failed to check admin status' });
-    }
-  });
-
-  app.get('/api/admin/complaints', isAdminAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/complaints', cognitoAuthMiddleware, async (req, res) => {
     try {
       const complaints = await storage.getAllComplaints();
       res.json(complaints);
@@ -253,7 +235,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get('/api/admin/stats/daily', isAdminAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/admin/stats/daily', cognitoAuthMiddleware, async (req, res) => {
     try {
       const stats = await storage.getDailyComplaintStats();
       res.json(stats);
@@ -263,219 +245,58 @@ export async function registerRoutes(
     }
   });
 
-  // === Password-based Admin Auth Routes ===
+  // === Cognito Admin Auth Routes ===
 
-  // Login with email/password
+  // Login with Cognito
   app.post('/api/admin/login', async (req: any, res) => {
     try {
       const input = adminLoginSchema.parse(req.body);
-      const admin = await authenticateAdmin(input.email, input.password);
+      const { authenticateWithCognito } = await import('./aws/cognito.js');
       
-      if (!admin) {
+      const authResult = await authenticateWithCognito(input.email, input.password);
+      
+      if (!authResult || !authResult.IdToken) {
         return res.status(401).json({ message: 'Invalid email or password' });
       }
       
-      // Regenerate session for security (prevent session fixation)
-      req.session.regenerate((err: any) => {
-        if (err) {
-          console.error('Session regeneration error:', err);
-          // Continue anyway - set session fields
-        }
-        
-        // Set session
-        req.session.adminId = admin.id;
-        req.session.adminEmail = admin.email;
-        
-        res.json({ success: true, email: admin.email });
+      res.json({ 
+        success: true, 
+        email: input.email,
+        idToken: authResult.IdToken,
+        accessToken: authResult.AccessToken,
+        refreshToken: authResult.RefreshToken
       });
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
       console.error('Login error:', err);
-      res.status(500).json({ message: 'Login failed' });
+      res.status(401).json({ message: 'Invalid email or password' });
     }
   });
 
-  // Logout (password-based session) - properly destroy session
-  app.post('/api/admin/logout', (req: any, res) => {
-    req.session.destroy((err: any) => {
-      if (err) {
-        console.error('Session destroy error:', err);
-        // Fall back to clearing fields
-        req.session.adminId = null;
-        req.session.adminEmail = null;
-      }
-      res.json({ success: true });
-    });
-  });
-
-  // Check auth status (works for both Replit Auth and password auth)
+  // Check auth status (Cognito JWT)
   app.get('/api/admin/auth-status', async (req: any, res) => {
-    // Check password-based session first - validate against DB
-    if (req.session?.adminId) {
-      const adminValid = await isAdminById(req.session.adminId);
-      if (adminValid) {
-        const isPrimary = await isFirstAdmin(req.session.adminId);
-        return res.json({ 
-          authenticated: true, 
-          authType: 'password',
-          email: req.session.adminEmail,
-          isAdmin: true,
-          isFirstAdmin: isPrimary
-        });
-      } else {
-        // Invalid session - clear it
-        req.session.adminId = null;
-        req.session.adminEmail = null;
-      }
-    }
+    const authHeader = req.headers.authorization;
     
-    // Check Replit Auth
-    if (req.isAuthenticated?.() && req.user?.claims?.sub) {
-      const userId = req.user.claims.sub;
-      const email = req.user.claims.email || '';
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.json({ authenticated: false });
+    }
+
+    const token = authHeader.substring(7);
+    
+    try {
+      const { verifyCognitoToken } = await import('./aws/cognito.js');
+      const decoded = await verifyCognitoToken(token);
       
-      // Auto-create first admin if none exist
-      await getOrCreateFirstAdmin(userId, email);
-      const adminStatus = await isUserAdmin(userId);
-      
-      // Get admin ID to check if first admin
-      const { getDb } = await import('./db');
-      const { adminUsers } = await import('@shared/schema');
-      const { eq } = await import('drizzle-orm');
-      const [adminUser] = await getDb().select().from(adminUsers).where(eq(adminUsers.userId, userId));
-      const isPrimary = adminUser ? await isFirstAdmin(adminUser.id) : false;
-      
-      return res.json({ 
+      res.json({ 
         authenticated: true, 
-        authType: 'replit',
-        email: email,
-        isAdmin: adminStatus,
-        isFirstAdmin: isPrimary
+        authType: 'cognito',
+        email: decoded.email,
+        isAdmin: true
       });
-    }
-    
-    res.json({ authenticated: false, isAdmin: false, isFirstAdmin: false });
-  });
-
-  // Create new admin user (only the first/primary admin can do this)
-  app.post('/api/admin/users', isAdminAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      // Get the current admin's ID
-      let currentAdminId: number | null = null;
-      
-      if (req.session?.adminId) {
-        currentAdminId = req.session.adminId;
-      } else if (req.adminUser?.id) {
-        currentAdminId = req.adminUser.id;
-      }
-      
-      // Only the first admin can create other admins
-      if (!currentAdminId || !(await isFirstAdmin(currentAdminId))) {
-        return res.status(403).json({ message: 'Only the primary administrator can add other admins' });
-      }
-      
-      const input = createAdminSchema.parse(req.body);
-      const newAdmin = await createAdminWithPassword(input.email, input.password);
-      res.status(201).json({ id: newAdmin.id, email: newAdmin.email });
-    } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      // Check for duplicate email
-      if (err.code === '23505') {
-        return res.status(400).json({ message: 'An admin with this email already exists' });
-      }
-      console.error('Error creating admin:', err);
-      res.status(500).json({ message: 'Failed to create admin user' });
-    }
-  });
-
-  // Get all admin users (for admin management)
-  app.get('/api/admin/users', isAdminAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const admins = await getAllAdmins();
-      res.json(admins);
     } catch (err) {
-      console.error('Error fetching admins:', err);
-      res.status(500).json({ message: 'Failed to fetch admin users' });
-    }
-  });
-
-  // Reset admin password (only first admin can do this)
-  app.patch('/api/admin/users/:id/password', isAdminAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const targetAdminId = Number(req.params.id);
-      
-      // Get the current admin's ID
-      let currentAdminId: number | null = null;
-      if (req.session?.adminId) {
-        currentAdminId = req.session.adminId;
-      } else if (req.adminUser?.id) {
-        currentAdminId = req.adminUser.id;
-      }
-      
-      // Only the first admin can reset passwords
-      if (!currentAdminId || !(await isFirstAdmin(currentAdminId))) {
-        return res.status(403).json({ message: 'Only the primary administrator can reset passwords' });
-      }
-      
-      // Cannot reset password of the first admin (they should use their own method)
-      if (await isFirstAdmin(targetAdminId)) {
-        return res.status(403).json({ message: 'Cannot reset password of the primary administrator' });
-      }
-      
-      const input = resetAdminPasswordSchema.parse(req.body);
-      const success = await resetAdminPassword(targetAdminId, input.password);
-      
-      if (!success) {
-        return res.status(404).json({ message: 'Admin user not found' });
-      }
-      
-      res.json({ message: 'Password reset successfully' });
-    } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      console.error('Error resetting admin password:', err);
-      res.status(500).json({ message: 'Failed to reset password' });
-    }
-  });
-
-  // Delete admin user (only first admin can do this)
-  app.delete('/api/admin/users/:id', isAdminAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const targetAdminId = Number(req.params.id);
-      
-      // Get the current admin's ID
-      let currentAdminId: number | null = null;
-      if (req.session?.adminId) {
-        currentAdminId = req.session.adminId;
-      } else if (req.adminUser?.id) {
-        currentAdminId = req.adminUser.id;
-      }
-      
-      // Only the first admin can delete other admins
-      if (!currentAdminId || !(await isFirstAdmin(currentAdminId))) {
-        return res.status(403).json({ message: 'Only the primary administrator can delete admins' });
-      }
-      
-      // Cannot delete the first admin
-      if (await isFirstAdmin(targetAdminId)) {
-        return res.status(403).json({ message: 'Cannot delete the primary administrator' });
-      }
-      
-      const success = await deleteAdmin(targetAdminId);
-      
-      if (!success) {
-        return res.status(404).json({ message: 'Admin user not found' });
-      }
-      
-      res.json({ message: 'Admin user deleted successfully' });
-    } catch (err) {
-      console.error('Error deleting admin:', err);
-      res.status(500).json({ message: 'Failed to delete admin user' });
+      res.json({ authenticated: false });
     }
   });
 
