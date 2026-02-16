@@ -34,10 +34,10 @@ Migrate the Replit-based Grievance Portal to AWS using a serverless architecture
 6. ✅ **Phase 6: Deploy Static Frontend** - S3 + CloudFront for React app
 7. ✅ **Phase 7: Database Migration** - Migrate schema and data
 8. ✅ **Phase 8: End-to-End Testing** - Verify full functionality
-9. ⏳ **Phase 9: Custom Domain Setup** - Configure Route 53 and ACM certificate
-10. ⏳ **Phase 10: Deployment Documentation** - Complete README for new deployments
-11. ⏳ **Phase 11: CI/CD Pipeline** - Automate deployments
-12. ⏳ **Phase 12: Production Hardening** - Monitoring, security, costs
+9. ⏳ **Phase 9: CI/CD Pipeline** - Automate deployments
+10. ⏳ **Phase 10: Custom Domain Setup** - Configure Route 53 and ACM certificate
+11. ⏳ **Phase 11: Production Hardening** - Monitoring, security, costs
+12. ⏳ **Phase 12: Deployment Documentation** - Complete README for new deployments
 
 ---
 
@@ -448,11 +448,95 @@ curl $API_ENDPOINT/api/stripe/publishable-key
 
 **Estimated Time:** 1-2 hours
 
-**Next:** Phase 9 - Custom Domain Setup
+**Next:** Phase 9 - CI/CD Pipeline
 
 ---
 
-## Phase 9: Custom Domain Setup ⏳ NOT STARTED
+
+
+---
+
+## Phase 9: CI/CD Pipeline ⏳ NOT STARTED
+
+**Goal:** Automate deployments from GitHub
+
+### Validation Criteria
+- [ ] GitHub connection created and shows "Available" status
+- [ ] CodeBuild project created
+- [ ] CodePipeline created with Source → Build stages
+- [ ] Manual test: Push commit to main branch
+- [ ] Pipeline automatically triggers within 1 minute
+- [ ] CodeBuild phase completes successfully
+- [ ] Lambda function code updated automatically
+- [ ] Test updated Lambda: `curl $API_ENDPOINT/api/health`
+- [ ] CloudWatch logs show new deployment
+
+### Tasks
+
+#### 9.1 Create buildspec.yml
+Create `buildspec.yml` in repository root:
+
+```yaml
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  pre_build:
+    commands:
+      - echo Installing dependencies...
+      - npm ci
+  build:
+    commands:
+      - echo Build started on `date`
+      - npm run build
+      - npm run package:lambda
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - aws s3 cp lambda.zip s3://$S3_BUCKET/lambda.zip
+      - aws lambda update-function-code --function-name grievance-portal --s3-bucket $S3_BUCKET --s3-key lambda.zip
+
+artifacts:
+  files:
+    - lambda.zip
+```
+
+#### 9.2 Deploy Pipeline Stack
+```bash
+cd infrastructure
+
+# Deploy CI/CD pipeline
+cdk deploy PipelineStack
+```
+
+#### 9.3 Activate GitHub Connection
+1. Go to AWS Console → Developer Tools → Connections
+2. Find the connection "grievance-portal-github"
+3. Click "Update pending connection"
+4. Authorize AWS to access your GitHub repository
+
+#### 9.4 Test Pipeline
+```bash
+# Make a small change and push to main
+git commit --allow-empty -m "Test CI/CD pipeline"
+git push origin main
+
+# Watch pipeline in AWS Console or CLI
+aws codepipeline get-pipeline-state --name grievance-portal-pipeline
+
+# Verify Lambda updated
+aws lambda get-function --function-name grievance-portal --query 'Configuration.LastModified'
+```
+
+**Estimated Time:** 2-3 hours
+
+**Next:** Phase 10 - Custom Domain Setup
+
+---
+
+## Phase 10: Custom Domain Setup ⏳ NOT STARTED
 
 **Goal:** Configure custom domain with HTTPS for CloudFront distribution
 
@@ -471,7 +555,7 @@ curl $API_ENDPOINT/api/stripe/publishable-key
 
 ### Tasks
 
-#### 9.1 Register or Verify Domain
+#### 10.1 Register or Verify Domain
 ```bash
 # If you need to register a new domain
 aws route53domains register-domain --domain-name example.com --cli-input-json file://domain-registration.json
@@ -480,7 +564,7 @@ aws route53domains register-domain --domain-name example.com --cli-input-json fi
 aws route53domains get-domain-detail --domain-name example.com
 ```
 
-#### 9.2 Create Hosted Zone (if not exists)
+#### 10.2 Create Hosted Zone (if not exists)
 ```bash
 # Create hosted zone
 aws route53 create-hosted-zone --name example.com --caller-reference $(date +%s)
@@ -489,7 +573,7 @@ aws route53 create-hosted-zone --name example.com --caller-reference $(date +%s)
 HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name example.com --query 'HostedZones[0].Id' --output text)
 ```
 
-#### 9.3 Request ACM Certificate
+#### 10.3 Request ACM Certificate
 ```bash
 # Request certificate (MUST be in us-east-1 for CloudFront)
 CERT_ARN=$(aws acm request-certificate \
@@ -504,7 +588,7 @@ aws acm describe-certificate --certificate-arn $CERT_ARN --region us-east-1 \
   --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
 ```
 
-#### 9.4 Create DNS Validation Record
+#### 10.4 Create DNS Validation Record
 ```bash
 # Get validation record details from previous command
 VALIDATION_NAME="<from previous output>"
@@ -527,7 +611,7 @@ aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --chang
 aws acm wait certificate-validated --certificate-arn $CERT_ARN --region us-east-1
 ```
 
-#### 9.5 Update CDK Stack with Custom Domain
+#### 10.5 Update CDK Stack with Custom Domain
 Add to `infrastructure/lib/frontend-stack.ts`:
 
 ```typescript
@@ -563,13 +647,13 @@ new route53.ARecord(this, 'AliasRecord', {
 });
 ```
 
-#### 9.6 Deploy Updated Stack
+#### 10.6 Deploy Updated Stack
 ```bash
 cd infrastructure
 cdk deploy GrievancePortalFrontendStack
 ```
 
-#### 9.7 Verify Custom Domain
+#### 10.7 Verify Custom Domain
 ```bash
 # Test DNS resolution
 dig example.com
@@ -583,11 +667,95 @@ openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>
 
 **Estimated Time:** 1-2 hours (plus certificate validation wait time)
 
-**Next:** Phase 10 - Deployment Documentation
+**Next:** Phase 11 - Production Hardening
 
 ---
 
-## Phase 10: Deployment Documentation ⏳ NOT STARTED
+## Phase 11: Production Hardening ⏳ NOT STARTED
+
+**Goal:** Monitoring, security, and cost optimization
+
+### Validation Criteria
+- [ ] CloudWatch log groups exist with correct retention (1 week)
+- [ ] CloudWatch alarms created and in "OK" state
+- [ ] Test alarm: Trigger condition and verify alarm fires
+- [ ] Lambda IAM role has minimum required permissions
+- [ ] DSQL application user created with minimal grants (not using admin)
+- [ ] Lambda connects with dsql:DbConnect (not DbConnectAdmin)
+- [ ] API Gateway throttling configured (100 req/sec rate, 200 burst)
+- [ ] Test throttling: Burst requests return 429
+- [ ] HTTPS enforced on API Gateway
+- [ ] No secrets in CloudWatch logs
+- [ ] AWS Budget alert set for $20/month threshold
+- [ ] Review AWS Cost Explorer for first week of usage
+- [ ] Verify costs within expected range ($4-12/month)
+
+### Tasks
+
+#### 11.1 Configure CloudWatch Alarms
+Alarms are defined in CDK stacks:
+- Lambda error alarm (>5 errors)
+- Lambda duration alarm (>10 seconds)
+- DSQL DPU usage alarm (approaching free tier limit)
+
+Verify alarms exist:
+```bash
+aws cloudwatch describe-alarms --alarm-names grievance-portal-*
+```
+
+#### 11.2 Review Security
+```bash
+# Test Lambda IAM permissions
+aws lambda get-function --function-name grievance-portal --query 'Configuration.Role'
+
+# Test API Gateway throttling
+ab -n 300 -c 50 $API_ENDPOINT/api/health
+
+# Check logs for secrets
+aws logs tail /aws/lambda/grievance-portal | grep -i "password\|secret\|key"
+```
+
+#### 11.3 Create DSQL Application User
+Currently the Lambda connects to DSQL as `admin` user (requires `dsql:DbConnectAdmin`). 
+Create a dedicated application user with minimal permissions:
+
+```bash
+# Connect to DSQL as admin
+psql $DSQL_URL
+
+# Create application user
+CREATE USER grievance_app;
+
+# Grant only necessary permissions
+GRANT SELECT, INSERT, UPDATE ON complaints TO grievance_app;
+GRANT SELECT, INSERT, UPDATE ON payments TO grievance_app;
+GRANT SELECT ON admin_users TO grievance_app;
+
+# Update server/db.ts to use 'grievance_app' instead of 'admin'
+# Update Lambda IAM policy to use dsql:DbConnect instead of dsql:DbConnectAdmin
+```
+
+#### 11.4 Set Up Cost Monitoring
+```bash
+# Create AWS Budget alert
+aws budgets create-budget \
+  --account-id $(aws sts get-caller-identity --query Account --output text) \
+  --budget file://budget.json
+
+# Review costs
+aws ce get-cost-and-usage \
+  --time-period Start=2026-02-01,End=2026-02-08 \
+  --granularity DAILY \
+  --metrics BlendedCost
+```
+
+**Estimated Time:** 2-3 hours
+
+**Next:** Phase 12 - Deployment Documentation
+
+---
+
+## Phase 12: Deployment Documentation ⏳ NOT STARTED
 
 **Goal:** Create comprehensive deployment guide for fresh AWS accounts
 
@@ -609,7 +777,7 @@ openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>
 
 ### Tasks
 
-#### 10.1 Create README.md
+#### 12.1 Create README.md
 Create comprehensive user-facing documentation:
 
 **Required Sections:**
@@ -625,7 +793,7 @@ Create comprehensive user-facing documentation:
 - Troubleshooting common issues
 - How to tear down
 
-#### 10.2 Create DEPLOY.md
+#### 12.2 Create DEPLOY.md
 Create detailed technical deployment guide:
 
 **Required Sections:**
@@ -641,7 +809,7 @@ Create detailed technical deployment guide:
 - Rollback procedures
 - Validation commands for each phase
 
-#### 10.3 Create ARCHITECTURE.md
+#### 12.3 Create ARCHITECTURE.md
 Document architecture and design decisions:
 
 **Required Sections:**
@@ -653,7 +821,7 @@ Document architecture and design decisions:
 - Trade-offs and limitations
 - Future enhancement opportunities
 
-#### 10.4 Update package.json Scripts
+#### 12.4 Update package.json Scripts
 Add helpful deployment scripts:
 
 ```json
@@ -669,7 +837,7 @@ Add helpful deployment scripts:
 }
 ```
 
-#### 10.5 Create .env.example
+#### 12.5 Create .env.example
 Document required environment variables:
 
 ```bash
@@ -689,7 +857,7 @@ AWS_ACCOUNT_ID=123456789012
 CUSTOM_DOMAIN=example.com
 ```
 
-#### 10.6 Test Documentation
+#### 12.6 Test Documentation
 Validation steps:
 1. Have someone unfamiliar with the project follow README
 2. Document any confusion or missing steps
@@ -699,189 +867,7 @@ Validation steps:
 
 **Estimated Time:** 3-4 hours
 
-**Next:** Phase 11 - CI/CD Pipeline
-
 ---
-
-## Phase 11: CI/CD Pipeline ⏳ NOT STARTED
-
-**Goal:** Automate deployments from GitHub
-
-### Validation Criteria
-- [ ] GitHub connection created and shows "Available" status
-- [ ] CodeBuild project created
-- [ ] CodePipeline created with Source → Build stages
-- [ ] Manual test: Push commit to main branch
-- [ ] Pipeline automatically triggers within 1 minute
-- [ ] CodeBuild phase completes successfully
-- [ ] Lambda function code updated automatically
-- [ ] Test updated Lambda: `curl $API_ENDPOINT/api/health`
-- [ ] CloudWatch logs show new deployment
-
-### Tasks
-
-#### 8.1 Create buildspec.yml
-Create `buildspec.yml` in repository root:
-
-```yaml
-version: 0.2
-
-phases:
-  install:
-    runtime-versions:
-      nodejs: 20
-  pre_build:
-    commands:
-      - echo Installing dependencies...
-      - npm ci
-  build:
-    commands:
-      - echo Build started on `date`
-      - npm run build
-      - npm run package:lambda
-  post_build:
-    commands:
-      - echo Build completed on `date`
-      - aws s3 cp lambda.zip s3://$S3_BUCKET/lambda.zip
-      - aws lambda update-function-code --function-name grievance-portal --s3-bucket $S3_BUCKET --s3-key lambda.zip
-
-artifacts:
-  files:
-    - lambda.zip
-```
-
-#### 8.2 Deploy Pipeline Stack
-```bash
-cd infrastructure
-
-# Deploy CI/CD pipeline
-cdk deploy PipelineStack
-```
-
-#### 8.3 Activate GitHub Connection
-1. Go to AWS Console → Developer Tools → Connections
-2. Find the connection "grievance-portal-github"
-3. Click "Update pending connection"
-4. Authorize AWS to access your GitHub repository
-
-#### 8.4 Test Pipeline
-```bash
-# Make a small change and push to main
-git commit --allow-empty -m "Test CI/CD pipeline"
-git push origin main
-
-# Watch pipeline in AWS Console or CLI
-aws codepipeline get-pipeline-state --name grievance-portal-pipeline
-
-# Verify Lambda updated
-aws lambda get-function --function-name grievance-portal --query 'Configuration.LastModified'
-```
-
-**Estimated Time:** 2-3 hours
-
-**Next:** Phase 12 - Production Hardening
-
----
-
-## Phase 12: Production Hardening ⏳ NOT STARTED
-
-**Goal:** Monitoring, security, and cost optimization
-
-### Validation Criteria
-- [ ] CloudWatch log groups exist with correct retention (1 week)
-- [ ] CloudWatch alarms created and in "OK" state
-- [ ] Test alarm: Trigger condition and verify alarm fires
-- [ ] Lambda IAM role has minimum required permissions
-- [ ] DSQL application user created with minimal grants (not using admin)
-- [ ] Lambda connects with dsql:DbConnect (not DbConnectAdmin)
-- [ ] API Gateway throttling configured (100 req/sec rate, 200 burst)
-- [ ] Test throttling: Burst requests return 429
-- [ ] HTTPS enforced on API Gateway
-- [ ] No secrets in CloudWatch logs
-- [ ] AWS Budget alert set for $20/month threshold
-- [ ] Review AWS Cost Explorer for first week of usage
-- [ ] Verify costs within expected range ($4-12/month)
-
-### Tasks
-
-#### 9.1 Configure CloudWatch Alarms
-Alarms are defined in CDK stacks:
-- Lambda error alarm (>5 errors)
-- Lambda duration alarm (>10 seconds)
-- DSQL DPU usage alarm (approaching free tier limit)
-
-Verify alarms exist:
-```bash
-aws cloudwatch describe-alarms --alarm-names grievance-portal-*
-```
-
-#### 9.2 Review Security
-```bash
-# Test Lambda IAM permissions
-aws lambda get-function --function-name grievance-portal --query 'Configuration.Role'
-
-# Test API Gateway throttling
-ab -n 300 -c 50 $API_ENDPOINT/api/health
-
-# Check logs for secrets
-aws logs tail /aws/lambda/grievance-portal | grep -i "password\|secret\|key"
-```
-
-#### 9.3 Create DSQL Application User
-Currently the Lambda connects to DSQL as `admin` user (requires `dsql:DbConnectAdmin`). 
-Create a dedicated application user with minimal permissions:
-
-```bash
-# Connect to DSQL as admin
-psql $DSQL_URL
-
-# Create application user
-CREATE USER grievance_app;
-
-# Grant only necessary permissions
-GRANT SELECT, INSERT, UPDATE ON complaints TO grievance_app;
-GRANT SELECT, INSERT, UPDATE ON payments TO grievance_app;
-GRANT SELECT ON admin_users TO grievance_app;
-
-# Update server/db.ts to use 'grievance_app' instead of 'admin'
-# Update Lambda IAM policy to use dsql:DbConnect instead of dsql:DbConnectAdmin
-```
-
-#### 9.4 Set Up Cost Monitoring
-```bash
-# Create AWS Budget alert
-aws budgets create-budget \
-  --account-id $(aws sts get-caller-identity --query Account --output text) \
-  --budget file://budget.json
-
-# Review costs
-aws ce get-cost-and-usage \
-  --time-period Start=2026-02-01,End=2026-02-08 \
-  --granularity DAILY \
-  --metrics BlendedCost
-```
-
-**Estimated Time:** 2-3 hours
-
----
-
-## Cost Estimates
-
-### Monthly Costs (Low Volume)
-
-| Service | Configuration | Monthly Cost |
-|---------|--------------|--------------|
-| Aurora DSQL | Free tier: 100K DPUs + 1GB | $0-5 |
-| Lambda | Free tier: 1M requests + 400K GB-seconds | $0-2 |
-| API Gateway | Free tier: 1M requests (first 12 months) | $0-3 |
-| SSM Parameter Store | Standard parameters | $0 |
-| CloudWatch Logs | ~2 GB ingestion + storage | $2 |
-| S3 | Lambda deployment packages | $0.10 |
-| CodeBuild | Free tier: 100 build minutes/month | $0 |
-| **TOTAL (excluding Bedrock)** | | **$4-12/month** |
-
-**Bedrock costs:** Pay-per-use, varies by model and usage
-
 ### Cost Comparison
 
 | Architecture | Monthly Cost | Notes |
@@ -981,10 +967,10 @@ aws codepipeline get-pipeline-state --name grievance-portal-pipeline
 - Phase 6: Deploy Static Frontend ✅ Complete
 - Phase 7: Database Migration ✅ Complete
 - Phase 8: End-to-End Testing ✅ Complete
-- Phase 9: Custom Domain Setup - 1-2 hours
-- Phase 10: Deployment Documentation - 3-4 hours
-- Phase 11: CI/CD Pipeline - 2-3 hours
-- Phase 12: Production Hardening - 2-3 hours
+- Phase 9: CI/CD Pipeline - 2-3 hours
+- Phase 10: Custom Domain Setup - 1-2 hours
+- Phase 11: Production Hardening - 2-3 hours
+- Phase 12: Deployment Documentation - 3-4 hours
 
 **Remaining Time:** 8-12 hours (1-1.5 days)
 
