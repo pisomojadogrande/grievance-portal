@@ -152,3 +152,6 @@ lambda.zip
 
 # CDK output directory
 infrastructure/cdk.out/
+
+# CDK context cache (contains account-specific values)
+infrastructure/cdk.context.json
