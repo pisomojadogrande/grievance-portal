@@ -33,9 +33,11 @@ Migrate the Replit-based Grievance Portal to AWS using a serverless architecture
 5. ✅ **Phase 5: Deploy Application API** - Lambda + API Gateway (API only)
 6. ✅ **Phase 6: Deploy Static Frontend** - S3 + CloudFront for React app
 7. ✅ **Phase 7: Database Migration** - Migrate schema and data
-8. ⏳ **Phase 8: End-to-End Testing** - Verify full functionality
-9. ⏳ **Phase 9: CI/CD Pipeline** - Automate deployments
-10. ⏳ **Phase 10: Production Hardening** - Monitoring, security, costs
+8. ✅ **Phase 8: End-to-End Testing** - Verify full functionality
+9. ⏳ **Phase 9: Custom Domain Setup** - Configure Route 53 and ACM certificate
+10. ⏳ **Phase 10: Deployment Documentation** - Complete README for new deployments
+11. ⏳ **Phase 11: CI/CD Pipeline** - Automate deployments
+12. ⏳ **Phase 12: Production Hardening** - Monitoring, security, costs
 
 ---
 
@@ -446,9 +448,262 @@ curl $API_ENDPOINT/api/stripe/publishable-key
 
 **Estimated Time:** 1-2 hours
 
+**Next:** Phase 9 - Custom Domain Setup
+
 ---
 
-## Phase 9: CI/CD Pipeline ⏳ NOT STARTED
+## Phase 9: Custom Domain Setup ⏳ NOT STARTED
+
+**Goal:** Configure custom domain with HTTPS for CloudFront distribution
+
+### Validation Criteria
+- [ ] Domain registered or available in Route 53
+- [ ] Hosted zone created in Route 53
+- [ ] ACM certificate requested for domain (must be in us-east-1 for CloudFront)
+- [ ] ACM certificate validated (DNS or email validation)
+- [ ] ACM certificate status shows "Issued"
+- [ ] CloudFront distribution updated with custom domain as alternate domain name (CNAME)
+- [ ] CloudFront distribution updated to use ACM certificate
+- [ ] Route 53 A record (alias) created pointing to CloudFront distribution
+- [ ] Can access application via custom domain over HTTPS
+- [ ] Certificate shows valid in browser (no warnings)
+- [ ] Old CloudFront URL still works (for rollback)
+
+### Tasks
+
+#### 9.1 Register or Verify Domain
+```bash
+# If you need to register a new domain
+aws route53domains register-domain --domain-name example.com --cli-input-json file://domain-registration.json
+
+# Or check existing domain
+aws route53domains get-domain-detail --domain-name example.com
+```
+
+#### 9.2 Create Hosted Zone (if not exists)
+```bash
+# Create hosted zone
+aws route53 create-hosted-zone --name example.com --caller-reference $(date +%s)
+
+# Get hosted zone ID
+HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name example.com --query 'HostedZones[0].Id' --output text)
+```
+
+#### 9.3 Request ACM Certificate
+```bash
+# Request certificate (MUST be in us-east-1 for CloudFront)
+CERT_ARN=$(aws acm request-certificate \
+  --domain-name example.com \
+  --validation-method DNS \
+  --region us-east-1 \
+  --query 'CertificateArn' \
+  --output text)
+
+# Get validation CNAME records
+aws acm describe-certificate --certificate-arn $CERT_ARN --region us-east-1 \
+  --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
+```
+
+#### 9.4 Create DNS Validation Record
+```bash
+# Get validation record details from previous command
+VALIDATION_NAME="<from previous output>"
+VALIDATION_VALUE="<from previous output>"
+
+# Create validation record in Route 53
+aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch '{
+  "Changes": [{
+    "Action": "CREATE",
+    "ResourceRecordSet": {
+      "Name": "'$VALIDATION_NAME'",
+      "Type": "CNAME",
+      "TTL": 300,
+      "ResourceRecords": [{"Value": "'$VALIDATION_VALUE'"}]
+    }
+  }]
+}'
+
+# Wait for certificate validation (can take 5-30 minutes)
+aws acm wait certificate-validated --certificate-arn $CERT_ARN --region us-east-1
+```
+
+#### 9.5 Update CDK Stack with Custom Domain
+Add to `infrastructure/lib/frontend-stack.ts`:
+
+```typescript
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as targets from 'aws-cdk-lib/aws-route53-targets';
+
+// Import existing certificate
+const certificate = acm.Certificate.fromCertificateArn(
+  this,
+  'Certificate',
+  'arn:aws:acm:us-east-1:ACCOUNT:certificate/CERT_ID'
+);
+
+// Update CloudFront distribution
+const distribution = new cloudfront.Distribution(this, 'Distribution', {
+  // ... existing config ...
+  domainNames: ['example.com'],
+  certificate: certificate,
+});
+
+// Import hosted zone
+const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+  domainName: 'example.com',
+});
+
+// Create A record pointing to CloudFront
+new route53.ARecord(this, 'AliasRecord', {
+  zone: hostedZone,
+  target: route53.RecordTarget.fromAlias(
+    new targets.CloudFrontTarget(distribution)
+  ),
+});
+```
+
+#### 9.6 Deploy Updated Stack
+```bash
+cd infrastructure
+cdk deploy GrievancePortalFrontendStack
+```
+
+#### 9.7 Verify Custom Domain
+```bash
+# Test DNS resolution
+dig example.com
+
+# Test HTTPS access
+curl -I https://example.com
+
+# Check certificate
+openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | openssl x509 -noout -dates
+```
+
+**Estimated Time:** 1-2 hours (plus certificate validation wait time)
+
+**Next:** Phase 10 - Deployment Documentation
+
+---
+
+## Phase 10: Deployment Documentation ⏳ NOT STARTED
+
+**Goal:** Create comprehensive deployment guide for fresh AWS accounts
+
+### Validation Criteria
+- [ ] README.md exists in repository root
+- [ ] README includes project overview and architecture diagram
+- [ ] Prerequisites section lists all required tools and versions
+- [ ] Step-by-step deployment instructions from scratch
+- [ ] Instructions for setting up Stripe test account
+- [ ] Instructions for configuring SSM parameters
+- [ ] Instructions for creating Cognito admin user
+- [ ] Instructions for custom domain setup (optional section)
+- [ ] Troubleshooting section with common issues
+- [ ] Cost estimates documented
+- [ ] Instructions for tearing down infrastructure
+- [ ] Test: Fresh AWS account user can follow README and deploy successfully
+- [ ] DEPLOY.md created with detailed technical deployment steps
+- [ ] ARCHITECTURE.md created explaining design decisions
+
+### Tasks
+
+#### 10.1 Create README.md
+Create comprehensive user-facing documentation:
+
+**Required Sections:**
+- Project overview and purpose
+- Architecture overview (Lambda, API Gateway, S3, CloudFront, DSQL, Cognito)
+- Prerequisites (AWS account, Node.js, AWS CLI, CDK)
+- Quick start guide
+- Detailed deployment steps
+- Configuration guide (Stripe, SSM parameters)
+- Admin user setup
+- Testing the deployment
+- Cost estimates
+- Troubleshooting common issues
+- How to tear down
+
+#### 10.2 Create DEPLOY.md
+Create detailed technical deployment guide:
+
+**Required Sections:**
+- Environment setup
+- CDK bootstrap process
+- Stack deployment order and dependencies
+- SSM parameter configuration
+- DSQL cluster setup
+- Database schema migration
+- Cognito user pool configuration
+- Frontend deployment process
+- Custom domain setup (optional)
+- Rollback procedures
+- Validation commands for each phase
+
+#### 10.3 Create ARCHITECTURE.md
+Document architecture and design decisions:
+
+**Required Sections:**
+- System architecture diagram (text-based or link to diagram)
+- Service selection rationale (why Lambda vs ECS, why DSQL, etc.)
+- Cost optimization strategies
+- Security considerations
+- Scalability approach
+- Trade-offs and limitations
+- Future enhancement opportunities
+
+#### 10.4 Update package.json Scripts
+Add helpful deployment scripts:
+
+```json
+{
+  "scripts": {
+    "deploy:all": "npm run build && cd infrastructure && cdk deploy --all",
+    "deploy:api": "npm run build && cd infrastructure && cdk deploy GrievancePortalComputeStack",
+    "deploy:frontend": "npm run build && tsx script/deploy-frontend.ts",
+    "setup:db": "tsx script/create-tables.ts",
+    "verify:health": "curl $API_ENDPOINT/api/health",
+    "teardown": "cd infrastructure && cdk destroy --all"
+  }
+}
+```
+
+#### 10.5 Create .env.example
+Document required environment variables:
+
+```bash
+# .env.example
+# Copy to .env and fill in your values
+
+# Stripe (get from https://dashboard.stripe.com/test/apikeys)
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# AWS Configuration
+AWS_REGION=us-east-1
+AWS_ACCOUNT_ID=123456789012
+
+# Custom Domain (optional)
+CUSTOM_DOMAIN=example.com
+```
+
+#### 10.6 Test Documentation
+Validation steps:
+1. Have someone unfamiliar with the project follow README
+2. Document any confusion or missing steps
+3. Verify all commands work as documented
+4. Ensure cost estimates are accurate
+5. Test troubleshooting section covers real issues encountered
+
+**Estimated Time:** 3-4 hours
+
+**Next:** Phase 11 - CI/CD Pipeline
+
+---
+
+## Phase 11: CI/CD Pipeline ⏳ NOT STARTED
 
 **Goal:** Automate deployments from GitHub
 
@@ -524,9 +779,11 @@ aws lambda get-function --function-name grievance-portal --query 'Configuration.
 
 **Estimated Time:** 2-3 hours
 
+**Next:** Phase 12 - Production Hardening
+
 ---
 
-## Phase 10: Production Hardening ⏳ NOT STARTED
+## Phase 12: Production Hardening ⏳ NOT STARTED
 
 **Goal:** Monitoring, security, and cost optimization
 
@@ -719,14 +976,17 @@ aws codepipeline get-pipeline-state --name grievance-portal-pipeline
 - Phase 1: Prerequisites ✅ Complete
 - Phase 2: CDK Infrastructure Code ✅ Complete
 - Phase 3: Application Refactoring ✅ Complete
-- Phase 4: Deploy Core Infrastructure - 2-3 hours
-- Phase 5: Deploy Application - 1-2 hours
-- Phase 6: Database Migration - 1-2 hours
-- Phase 7: End-to-End Testing - 2-3 hours
-- Phase 8: CI/CD Pipeline - 2-3 hours
-- Phase 9: Production Hardening - 2-3 hours
+- Phase 4: Deploy Core Infrastructure ✅ Complete
+- Phase 5: Deploy Application API ✅ Complete
+- Phase 6: Deploy Static Frontend ✅ Complete
+- Phase 7: Database Migration ✅ Complete
+- Phase 8: End-to-End Testing ✅ Complete
+- Phase 9: Custom Domain Setup - 1-2 hours
+- Phase 10: Deployment Documentation - 3-4 hours
+- Phase 11: CI/CD Pipeline - 2-3 hours
+- Phase 12: Production Hardening - 2-3 hours
 
-**Remaining Time:** 11-18 hours (1.5-2.5 days)
+**Remaining Time:** 8-12 hours (1-1.5 days)
 
 ---
 
