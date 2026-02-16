@@ -12,7 +12,11 @@
     "db:create": "tsx script/create-tables.ts",
     "db:restore": "tsx script/restore-data.ts",
     "package:lambda": "rm -f lambda.zip && cd dist && cp lambda.cjs index.js && zip -r ../lambda.zip index.js && cd ..",
-    "deploy:frontend": "tsx script/deploy-frontend.ts"
+    "deploy:frontend": "tsx script/deploy-frontend.ts",
+    "deploy:all": "npm run build && cd infrastructure && cdk deploy --all && cd .. && npm run deploy:frontend",
+    "deploy:api": "npm run build && cd infrastructure && cdk deploy GrievancePortalComputeStack && cd ..",
+    "setup:db": "npm run db:create",
+    "teardown": "cd infrastructure && cdk destroy --all && cd .."
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.985.0",
