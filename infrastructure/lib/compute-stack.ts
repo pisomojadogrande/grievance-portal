@@ -3,7 +3,6 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export class ComputeStack extends cdk.Stack {
@@ -14,8 +13,9 @@ export class ComputeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Get CloudFront URL from SSM parameter (set by frontend stack)
-    const frontendUrl = ssm.StringParameter.valueFromLookup(this, '/grievance-portal/frontend/url');
+    // CloudFront URL for CORS - use context or allow all origins initially
+    // After first deploy, set via: cdk deploy -c frontendUrl=https://xxx.cloudfront.net
+    const frontendUrl = this.node.tryGetContext('frontendUrl') || '*';
 
     // Lambda function
     this.lambdaFunction = new lambda.Function(this, 'GrievancePortalFunction', {

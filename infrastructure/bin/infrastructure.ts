@@ -32,9 +32,12 @@ const frontendStack = new FrontendStack(app, 'GrievancePortalFrontendStack', {
 });
 frontendStack.addDependency(computeStack);
 
-// Pipeline stack depends on compute stack
-const pipelineStack = new PipelineStack(app, 'GrievancePortalPipelineStack', {
-  env,
-  lambdaFunctionName: computeStack.lambdaFunction.functionName,
-});
-pipelineStack.addDependency(computeStack);
+// Pipeline stack - only create if GitHub connection ARN is provided
+const githubConnectionArn = app.node.tryGetContext('githubConnectionArn');
+if (githubConnectionArn) {
+  const pipelineStack = new PipelineStack(app, 'GrievancePortalPipelineStack', {
+    env,
+    lambdaFunctionName: computeStack.lambdaFunction.functionName,
+  });
+  pipelineStack.addDependency(computeStack);
+}

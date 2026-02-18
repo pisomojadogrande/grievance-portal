@@ -135,9 +135,31 @@ npm install
 cd ..
 ```
 
-### 3. Bootstrap AWS CDK
+### 3. Install AWS CDK CLI
 
-This is a one-time setup per AWS account/region:
+```bash
+npm install -g aws-cdk --registry https://registry.npmjs.org
+cdk --version
+```
+
+### 4. Bootstrap AWS CDK
+
+This is a one-time setup per AWS account/region.
+
+First, set environment variables so CDK knows your account/region:
+
+```bash
+export CDK_DEFAULT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+export CDK_DEFAULT_REGION=us-east-1
+```
+
+If CDK has trouble finding your credentials (common with SSO or assumed roles), export them explicitly:
+
+```bash
+eval "$(aws configure export-credentials --format env)"
+```
+
+Then bootstrap:
 
 ```bash
 cd infrastructure
@@ -147,17 +169,21 @@ cd ..
 
 This creates an S3 bucket and IAM roles that CDK uses for deployments.
 
-### 4. Deploy Infrastructure Stacks
+### 5. Deploy Infrastructure Stacks
 
-Deploy all stacks in order:
+Build and deploy all stacks:
 
 ```bash
 cd infrastructure
-
-# Deploy all stacks at once
+npm run build
 cdk deploy --all
+```
 
-# Or deploy individually in this order:
+Or deploy individually in this order:
+
+```bash
+cd infrastructure
+npm run build
 cdk deploy GrievancePortalParametersStack
 cdk deploy GrievancePortalDatabaseStack
 cdk deploy GrievancePortalAuthStack
@@ -167,13 +193,27 @@ cdk deploy GrievancePortalFrontendStack
 cd ..
 ```
 
-**Note the outputs** - you'll need:
-- API Gateway endpoint URL
-- CloudFront distribution URL
-- Cognito User Pool ID
-- Cognito Client ID
+CDK prints outputs at the end of deployment. To retrieve them later:
 
-### 5. Create Aurora DSQL Cluster
+```bash
+# API Gateway endpoint
+aws cloudformation describe-stacks --stack-name GrievancePortalComputeStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' --output text
+
+# CloudFront URL
+aws cloudformation describe-stacks --stack-name GrievancePortalFrontendStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' --output text
+
+# Cognito User Pool ID
+aws cloudformation describe-stacks --stack-name GrievancePortalAuthStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' --output text
+
+# Cognito Client ID
+aws cloudformation describe-stacks --stack-name GrievancePortalAuthStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`UserPoolClientId`].OutputValue' --output text
+```
+
+### 6. Create Aurora DSQL Cluster
 
 DSQL clusters must be created manually:
 

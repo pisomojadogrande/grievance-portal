@@ -454,7 +454,7 @@ curl $API_ENDPOINT/api/stripe/publishable-key
 
 ## Phase 9: Deployment Documentation ✅ COMPLETED
 
-**Completed:** February 16, 2026 20:03 UTC  
+**Completed:** February 18, 2026  
 **Goal:** Create comprehensive deployment guide for fresh AWS accounts
 
 ### Validation Criteria
@@ -473,6 +473,17 @@ curl $API_ENDPOINT/api/stripe/publishable-key
 - [x] .env.example created with template values
 - [x] package.json updated with helpful deployment scripts
 - [x] No hardcoded AWS account IDs or identifiers in docs
+
+### Updates Made (February 18, 2026)
+- Added CDK CLI installation instructions with `--registry` flag for npm auth issues
+- Added `eval "$(aws configure export-credentials --format env)"` workaround for SSO/assumed role credentials
+- Added `npm run build` step before `cdk deploy`
+- Replaced "Note the outputs" with actual `aws cloudformation describe-stacks` commands
+- Fixed circular dependency: ComputeStack no longer uses SSM lookup for frontend URL (uses context variable instead)
+- Made PipelineStack conditional on `githubConnectionArn` context to avoid placeholder errors
+
+### Known Issue - Needs Fix Before Phase 10
+- **"Bureaucratic Review in Progress" spins forever** - Complaint submission appears to hang after payment. Need to investigate Lambda logs/API response. This blocks end-to-end testing validation.
 
 ### What Was Created
 
