@@ -190,6 +190,15 @@ cdk deploy GrievancePortalAuthStack
 cdk deploy GrievancePortalComputeStack
 cdk deploy GrievancePortalFrontendStack
 
+# IMPORTANT: After FrontendStack deploys, get the CloudFront URL and redeploy ComputeStack with CORS fix
+CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name GrievancePortalFrontendStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' --output text)
+
+echo "CloudFront URL: $CLOUDFRONT_URL"
+
+# Redeploy ComputeStack with the correct CORS origin
+cdk deploy GrievancePortalComputeStack -c frontendUrl=$CLOUDFRONT_URL
+
 cd ..
 ```
 
