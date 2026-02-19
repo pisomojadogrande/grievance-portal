@@ -1,7 +1,7 @@
 # AWS Deployment Plan - Grievance Portal
 
-**Last Updated:** February 8, 2026  
-**Current Status:** Phases 1-3 Complete ✅ | Ready for Phase 4
+**Last Updated:** February 19, 2026  
+**Current Status:** Phase 12 In Progress - Bedrock Model Optimization
 
 ---
 
@@ -745,9 +745,17 @@ openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>
 
 ---
 
-## Phase 12: Production Hardening ⏳ NOT STARTED
+## Phase 12: Production Hardening ⏳ IN PROGRESS
 
 **Goal:** Monitoring, security, and cost optimization
+
+### Current Work: Bedrock Model Optimization
+**Status:** In Progress (Feb 19, 2026)  
+**Details:** See [bedrock-model-optimization.md](./bedrock-model-optimization.md)
+
+**Issue:** Lambda timeout (30s) insufficient for Claude 3.5 Sonnet (35-45s)  
+**Solution:** Switched to Claude 3.5 Haiku (5-10s latency) + increased Lambda timeout to 90s  
+**Changes:** Model ID, timing instrumentation, Lambda timeout configuration
 
 ### Validation Criteria
 - [ ] CloudWatch log groups exist with correct retention (1 week)

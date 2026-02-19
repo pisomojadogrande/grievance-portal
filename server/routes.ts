@@ -306,6 +306,8 @@ export async function registerRoutes(
 // Helper to generate AI response - exported for webhook handler
 export async function generateBureaucraticResponse(complaintId: number, content: string) {
   console.log(`[AI] Starting analysis for complaint #${complaintId}`);
+  const startTime = Date.now();
+  
   try {
     const systemPrompt = `You are a highly bureaucratic government official at the Department of Complaints. 
 Your job is to analyze complaints and provide a response that is polite, formal, extremely verbose, and ultimately non-committal. 
@@ -330,6 +332,8 @@ Return your response in JSON format with two fields:
       temperature: 1.0,
     });
 
+    const duration = Date.now() - startTime;
+    console.log(`[AI] Bedrock inference took ${duration}ms for complaint #${complaintId}`);
     console.log(`[AI] Response for #${complaintId}:`, responseText);
     
     // Strip any preamble text before JSON

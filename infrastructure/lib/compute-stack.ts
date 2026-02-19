@@ -25,7 +25,7 @@ export class ComputeStack extends cdk.Stack {
       code: lambda.Code.fromAsset('../lambda.zip', {
         // Will be created in Phase 4
       }),
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(90),
       memorySize: 512,
       environment: {
         NODE_ENV: 'production',
