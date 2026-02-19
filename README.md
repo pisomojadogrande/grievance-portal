@@ -414,9 +414,39 @@ Common causes:
 
 ### CORS Errors in Browser
 
-**Error:** "Access-Control-Allow-Origin" errors
+**Error:** "Access-Control-Allow-Origin" errors or "Credential is not supported if the CORS header 'Access-Control-Allow-Origin' is '*'"
 
-**Solution:** Verify the frontend is calling the API Gateway URL, not CloudFront. Check browser console for the actual URL being called.
+**Root Cause:** API Gateway CORS is configured with wildcard origin (`*`) but `allowCredentials: true`, which is invalid.
+
+**Solution:** Redeploy ComputeStack with your CloudFront URL:
+
+```bash
+# Get your CloudFront URL
+CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name GrievancePortalFrontendStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' --output text)
+
+echo "CloudFront URL: $CLOUDFRONT_URL"
+
+# Redeploy with correct CORS origin
+cd infrastructure
+cdk deploy GrievancePortalComputeStack -c frontendUrl=$CLOUDFRONT_URL
+cd ..
+```
+
+**Verification:**
+```bash
+# Test CORS headers
+curl -I -X OPTIONS \
+  -H "Origin: $CLOUDFRONT_URL" \
+  -H "Access-Control-Request-Method: POST" \
+  <YOUR_API_GATEWAY_URL>/api/admin/login
+```
+
+Should see:
+```
+Access-Control-Allow-Origin: <your-cloudfront-url>
+Access-Control-Allow-Credentials: true
+```
 
 ### Database Connection Fails
 
