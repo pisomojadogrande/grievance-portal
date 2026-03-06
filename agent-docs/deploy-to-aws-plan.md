@@ -484,7 +484,7 @@ curl $API_ENDPOINT/api/stripe/publishable-key
 
 ### Bug Fixed (March 2026)
 - **"Bureaucratic Review in Progress" spinning forever** - Root cause: `generateBureaucraticResponse` was called fire-and-forget (`.catch(console.error)`) inside the `verify-session` handler. Lambda freezes the execution environment immediately after the HTTP response is sent, so background Promises never run. The Bedrock call was silently dropped every time.
-- **Fix** (commit TBD): `await generateBureaucraticResponse(...)` synchronously in the `verify-session` handler before returning. This adds ~5-10s to the verify-session response time, but is well within the 90s Lambda timeout.
+- **Fix** (commit b11e732): `await generateBureaucraticResponse(...)` synchronously in the `verify-session` handler before returning. This adds ~5-10s to the verify-session response time, but is well within the 90s Lambda timeout.
 - **Secondary effect fixed**: The frontend was polling `GET /api/complaints/{id}` every 2 seconds indefinitely (because status never changed from "received" to "resolved"), causing many Lambda invocations. With the await fix, verify-session now returns `status: "resolved"`, the poll stops immediately.
 - **UX tradeoff**: Bedrock inference now happens while the frontend shows "Verifying your payment..." rather than during the intended "Bureaucratic Review in Progress" spinner — that spinner is never shown. This works correctly but is not ideal. A better approach would have payment verification return quickly and AI generation happen as a separate async step the status page polls for (e.g. a dedicated Lambda invoke, Step Functions, or having the status page trigger generation on first load). Low priority for now.
 
