@@ -165,13 +165,13 @@ export async function registerRoutes(
         });
 
         await storage.updateComplaint(Number(complaintId), { status: 'received' });
-        
-        // Trigger AI analysis
-        generateBureaucraticResponse(Number(complaintId), complaint.content).catch(console.error);
 
-        return res.json({ 
+        // Run AI analysis synchronously - Lambda freezes after response, so fire-and-forget doesn't work
+        await generateBureaucraticResponse(Number(complaintId), complaint.content);
+
+        return res.json({
           verified: true,
-          status: 'received',
+          status: 'resolved',
           message: 'Payment verified successfully'
         });
       }
