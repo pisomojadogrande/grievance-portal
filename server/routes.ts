@@ -349,6 +349,12 @@ Return your response in JSON format with two fields:
     } else if (cleanedResponse.startsWith('```')) {
       cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
+
+    // Strip any trailing content after the closing brace
+    const jsonEnd = cleanedResponse.lastIndexOf('}');
+    if (jsonEnd !== -1) {
+      cleanedResponse = cleanedResponse.substring(0, jsonEnd + 1);
+    }
     
     // Parse with lenient handling - replace literal newlines with \n
     try {

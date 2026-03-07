@@ -1,4 +1,4 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 
 const client = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
@@ -16,22 +16,22 @@ export interface ChatCompletionOptions {
 
 export async function createChatCompletion(options: ChatCompletionOptions): Promise<string> {
   // Using Haiku for fast, cost-effective creative responses
-  const modelId = options.model || 'us.anthropic.claude-3-5-haiku-20241022-v1:0';
-  
-  const payload = {
-    anthropic_version: "bedrock-2023-05-31",
-    messages: options.messages,
-    max_tokens: options.max_tokens || 1024,
-    temperature: options.temperature || 1.0,
-  };
+  const modelId = options.model || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
-  const command = new InvokeModelCommand({
+  const command = new ConverseCommand({
     modelId,
-    body: JSON.stringify(payload),
+    messages: options.messages.map(m => ({
+      role: m.role,
+      content: [{ text: m.content }],
+    })),
+    inferenceConfig: {
+      maxTokens: options.max_tokens || 1024,
+      temperature: options.temperature || 1.0,
+    },
   });
 
   const response = await client.send(command);
-  const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-  
-  return responseBody.content[0].text;
+  const text = response.output?.message?.content?.[0]?.text;
+  if (!text) throw new Error('No text in Bedrock response');
+  return text;
 }
