@@ -42,7 +42,7 @@ export class ComputeStack extends cdk.Stack {
 
     // Grant Bedrock access
     this.lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['bedrock:InvokeModel'],
+      actions: ['bedrock:InvokeModel', 'aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
       resources: ['*'],
     }));
 
