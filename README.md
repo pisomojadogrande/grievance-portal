@@ -311,6 +311,17 @@ npm run deploy:frontend
 
 This builds the React app and uploads it to S3, then invalidates the CloudFront cache.
 
+> **Custom domain:** The CDK stack automatically sets `/grievance-portal/frontend/url` in SSM to the CloudFront domain (e.g. `https://d4dgt20osmcvx.cloudfront.net`). If you have a custom domain, override it after deploying — and re-apply this any time you redeploy the frontend CDK stack, as it will be reset:
+> ```bash
+> aws ssm put-parameter \
+>   --name /grievance-portal/frontend/url \
+>   --value "https://your-custom-domain.example.com" \
+>   --type String \
+>   --overwrite \
+>   --region us-east-1
+> ```
+> This value is used by the Lambda to build Stripe's payment return URL.
+
 ### 9. Create Admin User
 
 ```bash
@@ -418,18 +429,19 @@ Common causes:
 
 **Root Cause:** API Gateway CORS is configured with wildcard origin (`*`) but `allowCredentials: true`, which is invalid.
 
-**Solution:** Redeploy ComputeStack with your CloudFront URL:
+**Solution:** Redeploy ComputeStack with your frontend URL (CloudFront domain, or custom domain if you have one):
 
 ```bash
-# Get your CloudFront URL
-CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name GrievancePortalFrontendStack \
-  --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' --output text)
+# Use your CloudFront URL, or your custom domain if configured
+FRONTEND_URL="https://your-custom-domain.example.com"
 
-echo "CloudFront URL: $CLOUDFRONT_URL"
+# Or get the CloudFront URL from stack outputs if not using a custom domain:
+# FRONTEND_URL=$(aws cloudformation describe-stacks --stack-name GrievancePortalFrontendStack \
+#   --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' --output text)
 
 # Redeploy with correct CORS origin
 cd infrastructure
-cdk deploy GrievancePortalComputeStack -c frontendUrl=$CLOUDFRONT_URL
+cdk deploy GrievancePortalComputeStack -c frontendUrl=$FRONTEND_URL
 cd ..
 ```
 
