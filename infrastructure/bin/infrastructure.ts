@@ -26,9 +26,15 @@ computeStack.addDependency(databaseStack);
 computeStack.addDependency(authStack);
 
 // Frontend stack depends on compute stack (needs API endpoint)
+const customDomainEnv = process.env.CUSTOM_DOMAIN;
+if (!customDomainEnv) {
+  throw new Error('CUSTOM_DOMAIN environment variable is required. Set to your custom domain (e.g. complaints.example.com) or "none" to use the CloudFront domain.');
+}
+const customDomain = customDomainEnv === 'none' ? undefined : customDomainEnv;
 const frontendStack = new FrontendStack(app, 'GrievancePortalFrontendStack', {
   env,
   apiEndpoint: computeStack.apiEndpoint,
+  customDomain,
 });
 frontendStack.addDependency(computeStack);
 

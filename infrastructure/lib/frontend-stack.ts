@@ -8,6 +8,7 @@ import { Construct } from 'constructs';
 
 interface FrontendStackProps extends cdk.StackProps {
   apiEndpoint: string;
+  customDomain?: string;
 }
 
 export class FrontendStack extends cdk.Stack {
@@ -61,11 +62,13 @@ export class FrontendStack extends cdk.Stack {
       ],
     });
 
-    // Store CloudFront URL in SSM for Lambda to use
+    // Store frontend URL in SSM for Lambda to use (custom domain takes precedence)
     new ssm.StringParameter(this, 'FrontendUrlParameter', {
       parameterName: '/grievance-portal/frontend/url',
-      stringValue: `https://${distribution.distributionDomainName}`,
-      description: 'CloudFront URL for the frontend',
+      stringValue: props.customDomain
+        ? `https://${props.customDomain}`
+        : `https://${distribution.distributionDomainName}`,
+      description: 'Frontend URL for the application (custom domain or CloudFront)',
     });
 
     // Outputs

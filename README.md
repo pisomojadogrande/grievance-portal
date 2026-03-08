@@ -176,7 +176,8 @@ Build and deploy all stacks:
 ```bash
 cd infrastructure
 npm run build
-cdk deploy --all
+CUSTOM_DOMAIN=complaints.example.com cdk deploy --all
+# or: CUSTOM_DOMAIN=none cdk deploy --all
 ```
 
 Or deploy individually in this order:
@@ -188,7 +189,7 @@ cdk deploy GrievancePortalParametersStack
 cdk deploy GrievancePortalDatabaseStack
 cdk deploy GrievancePortalAuthStack
 cdk deploy GrievancePortalComputeStack
-cdk deploy GrievancePortalFrontendStack
+CUSTOM_DOMAIN=complaints.example.com cdk deploy GrievancePortalFrontendStack
 
 # IMPORTANT: After FrontendStack deploys, get the CloudFront URL and redeploy ComputeStack with CORS fix
 CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name GrievancePortalFrontendStack \
@@ -311,16 +312,14 @@ npm run deploy:frontend
 
 This builds the React app and uploads it to S3, then invalidates the CloudFront cache.
 
-> **Custom domain:** The CDK stack automatically sets `/grievance-portal/frontend/url` in SSM to the CloudFront domain (e.g. `https://d4dgt20osmcvx.cloudfront.net`). If you have a custom domain, override it after deploying — and re-apply this any time you redeploy the frontend CDK stack, as it will be reset:
+> **Custom domain:** `CUSTOM_DOMAIN` must be set when deploying. Use your custom domain, or `none` to fall back to the CloudFront domain:
 > ```bash
-> aws ssm put-parameter \
->   --name /grievance-portal/frontend/url \
->   --value "https://your-custom-domain.example.com" \
->   --type String \
->   --overwrite \
->   --region us-east-1
+> # With a custom domain
+> CUSTOM_DOMAIN=complaints.example.com npm run deploy:frontend
+>
+> # Without a custom domain
+> CUSTOM_DOMAIN=none npm run deploy:frontend
 > ```
-> This value is used by the Lambda to build Stripe's payment return URL.
 
 ### 9. Create Admin User
 
