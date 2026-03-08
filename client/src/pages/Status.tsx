@@ -25,10 +25,10 @@ export default function Status() {
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment');
     const sessionId = urlParams.get('session_id');
-    
+
     if (paymentStatus === 'success') {
       setIsVerifyingPayment(true);
-      
+
       const verifyPayment = async () => {
         try {
           if (sessionId) {
@@ -37,7 +37,7 @@ export default function Status() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ sessionId, complaintId: id }),
             });
-            
+
             if (response.ok) {
               const result = await response.json();
               if (result.verified) {
@@ -48,7 +48,7 @@ export default function Status() {
               }
             }
           }
-          
+
           await refetch();
         } catch (error) {
           console.error('Error verifying payment:', error);
@@ -57,7 +57,7 @@ export default function Status() {
           window.history.replaceState({}, '', `/status/${id}`);
         }
       };
-      
+
       verifyPayment();
     }
   }, [id, refetch, toast]);
@@ -204,6 +204,14 @@ export default function Status() {
 }
 
 function StatusSkeleton({ showPaymentVerification = false }: { showPaymentVerification?: boolean }) {
+  const [phase, setPhase] = useState<'verifying' | 'generating'>('verifying');
+
+  useEffect(() => {
+    if (!showPaymentVerification) return;
+    const timer = setTimeout(() => setPhase('generating'), 3000);
+    return () => clearTimeout(timer);
+  }, [showPaymentVerification]);
+
   return (
     <div className="min-h-screen bg-background">
       <OfficialHeader />
@@ -211,7 +219,9 @@ function StatusSkeleton({ showPaymentVerification = false }: { showPaymentVerifi
         {showPaymentVerification && (
           <div className="mb-8 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 flex items-center gap-3">
             <Loader2 className="w-5 h-5 animate-spin text-green-600 dark:text-green-400" />
-            <span className="text-green-800 dark:text-green-300 font-medium">Verifying your payment...</span>
+            <span className="text-green-800 dark:text-green-300 font-medium">
+              {phase === 'verifying' ? 'Verifying your payment...' : 'Generating bureaucratic response...'}
+            </span>
           </div>
         )}
         <div className="space-y-4 mb-8">
