@@ -20,6 +20,7 @@ export default function Status() {
   const { data: complaint, isLoading, refetch } = useComplaint(id);
   const { toast } = useToast();
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -61,6 +62,15 @@ export default function Status() {
       verifyPayment();
     }
   }, [id, refetch, toast]);
+
+  useEffect(() => {
+    if (complaint && complaint.status !== 'pending_payment') {
+      fetch(apiUrl(`/api/complaints/${id}/payment`))
+        .then(r => r.ok ? r.json() : null)
+        .then(p => p?.amount != null && setPaymentAmount(p.amount))
+        .catch(() => {});
+    }
+  }, [id, complaint?.status]);
 
   if (isLoading || isVerifyingPayment) return <StatusSkeleton showPaymentVerification={isVerifyingPayment} />;
   if (!complaint) return <StatusError />;
@@ -171,7 +181,9 @@ export default function Status() {
                     </div>
                     <div className="flex justify-between gap-2">
                       <dt className="text-muted-foreground">Filing Fee</dt>
-                      <dd className="font-mono">$5.00</dd>
+                      <dd className="font-mono">
+                        {paymentAmount != null ? `$${(paymentAmount / 100).toFixed(2)}` : '$5.00'}
+                      </dd>
                     </div>
                     <div className="flex justify-between gap-2">
                       <dt className="text-muted-foreground">Customer</dt>

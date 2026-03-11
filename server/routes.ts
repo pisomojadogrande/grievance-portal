@@ -155,6 +155,12 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/complaints/:id/payment', async (req, res) => {
+    const payments = await storage.getPaymentsByComplaintId(Number(req.params.id));
+    if (!payments.length) return res.status(404).json({ message: 'Payment not found' });
+    res.json(payments[0]);
+  });
+
   // === Verify Checkout Session (called from success page) ===
   // This is the primary source of truth for payment processing
   // Uses idempotency check to prevent double-processing
