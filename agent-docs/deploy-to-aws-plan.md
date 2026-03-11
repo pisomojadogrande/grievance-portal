@@ -991,8 +991,8 @@ aws codepipeline get-pipeline-state --name grievance-portal-pipeline
 
 ### To Enable
 1. Add SSM params via AWS CLI (see Step 0 and Step 1 in stripe-live-mode.md)
-2. Deploy Lambda: `npm run deploy:lambda`
-3. Deploy frontend: `npm run deploy:frontend`
+2. Deploy API: `AWS_PROFILE=<profile> CUSTOM_DOMAIN=<domain> npm run deploy:api`
+3. Deploy frontend: `AWS_PROFILE=<profile> CUSTOM_DOMAIN=<domain> npm run deploy:frontend`
 
 ---
 

@@ -224,8 +224,8 @@ Update `agent-docs/deploy-to-aws-plan.md` with notes on the live mode setup, new
 1. Run Step 0 SSM commands (test restricted key) → test manually (no deploy needed if Lambda already running, but a redeploy forces Lambda to re-read SSM)
 2. Run Step 1 SSM commands (live keys)
 3. Implement code changes (Steps 2–4) → `npm run build` → `node test-lambda-local.cjs`
-4. Deploy Lambda: `npm run deploy:lambda`
-5. Deploy frontend: `npm run deploy:frontend`
+4. Deploy API: `AWS_PROFILE=<profile> CUSTOM_DOMAIN=<domain> npm run deploy:api`
+5. Deploy frontend: `AWS_PROFILE=<profile> CUSTOM_DOMAIN=<domain> npm run deploy:frontend`
 6. Manual end-to-end test: test mode payment, then live mode payment
 
 ## Critical files
