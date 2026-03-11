@@ -11,51 +11,102 @@ import { useToast } from "@/hooks/use-toast";
 import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 
-// Lazy-load Stripe with publishable key from server
 import { apiUrl } from "@/config";
 
-let stripePromise: Promise<Stripe | null> | null = null;
-let stripeLoadError: string | null = null;
-
-function getStripePromise(): Promise<Stripe | null> {
-  if (!stripePromise) {
-    stripePromise = fetch(apiUrl('/api/stripe/config'))
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load payment configuration');
-        return res.json();
-      })
-      .then(({ publishableKey }) => {
-        if (!publishableKey) throw new Error('Payment configuration missing');
-        return loadStripe(publishableKey);
-      })
-      .catch(err => {
-        stripeLoadError = err.message;
-        return null;
-      });
-  }
-  return stripePromise;
+// Factory: lazily loads a Stripe instance by fetching the publishable key from configUrl.
+// The returned promise is cached so Stripe is only initialized once per mode.
+function makeStripeLoader(configUrl: string): { load: () => Promise<Stripe | null>; error: string | null } {
+  let promise: Promise<Stripe | null> | null = null;
+  const loader = {
+    error: null as string | null,
+    load(): Promise<Stripe | null> {
+      if (!promise) {
+        promise = fetch(apiUrl(configUrl))
+          .then(res => res.ok ? res.json() : res.json().then((d: any) => { throw new Error(d.message || 'Failed to load payment configuration'); }))
+          .then(({ publishableKey }: { publishableKey: string }) => {
+            if (!publishableKey) throw new Error('Payment configuration missing');
+            return loadStripe(publishableKey);
+          })
+          .catch(err => {
+            loader.error = err.message;
+            return null;
+          });
+      }
+      return promise;
+    },
+  };
+  return loader;
 }
 
-let liveStripePromise: Promise<Stripe | null> | null = null;
-let liveStripeLoadError: string | null = null;
+const testStripe = makeStripeLoader('/api/stripe/config');
+const liveStripe = makeStripeLoader('/api/stripe/live-config');
 
-function getLiveStripePromise(): Promise<Stripe | null> {
-  if (!liveStripePromise) {
-    liveStripePromise = fetch(apiUrl('/api/stripe/live-config'))
-      .then(res => {
-        if (!res.ok) return res.json().then(d => { throw new Error(d.message || 'Failed to load live payment configuration'); });
-        return res.json();
-      })
-      .then(({ publishableKey }) => {
-        if (!publishableKey) throw new Error('Live payment configuration missing');
-        return loadStripe(publishableKey);
-      })
-      .catch(err => {
-        liveStripeLoadError = err.message;
-        return null;
-      });
+async function fetchCheckoutClientSecret(sessionUrl: string, complaintId: number): Promise<string> {
+  const res = await fetch(apiUrl(sessionUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ complaintId }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || 'Failed to create checkout session');
   }
-  return liveStripePromise;
+  const { clientSecret } = await res.json();
+  return clientSecret;
+}
+
+interface CheckoutSectionProps {
+  banner: React.ReactNode;
+  buttonLabel: string;
+  buttonClassName?: string;
+  loaded: boolean;
+  error: string | null;
+  showCheckout: boolean;
+  onStart: () => void;
+  stripeLoader: () => Promise<Stripe | null>;
+  fetchSecret: () => Promise<string>;
+  completionNote: string;
+  testId?: string;
+}
+
+function CheckoutSection({
+  banner, buttonLabel, buttonClassName, loaded, error, showCheckout, onStart,
+  stripeLoader, fetchSecret, completionNote, testId,
+}: CheckoutSectionProps) {
+  if (error) {
+    return (
+      <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-center">
+        <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-2" />
+        <p className="text-sm text-destructive">{error}</p>
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => window.location.reload()}>
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+  if (!showCheckout) {
+    return (
+      <Button
+        data-testid={testId}
+        className={`w-full h-12 text-lg ${buttonClassName ?? 'shadow-lg'}`}
+        size="lg"
+        onClick={onStart}
+        disabled={!loaded}
+      >
+        {!loaded ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading Payment Form...</> : buttonLabel}
+      </Button>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <div data-testid={testId ? `${testId}-checkout` : undefined}>
+        <EmbeddedCheckoutProvider stripe={stripeLoader()} options={{ fetchClientSecret: fetchSecret }}>
+          <EmbeddedCheckout />
+        </EmbeddedCheckoutProvider>
+      </div>
+      <p className="text-xs text-muted-foreground text-center">{completionNote}</p>
+    </div>
+  );
 }
 
 export default function Payment() {
@@ -85,59 +136,12 @@ export default function Payment() {
   }, [id, toast]);
 
   useEffect(() => {
-    // Pre-load Stripe (test)
-    getStripePromise().then((stripe) => {
-      if (stripe) {
-        setStripeLoaded(true);
-      } else if (stripeLoadError) {
-        setStripeError(stripeLoadError);
-      }
-    });
-    // Pre-load Stripe (live)
-    getLiveStripePromise().then((stripe) => {
-      if (stripe) {
-        setLiveStripeLoaded(true);
-      } else if (liveStripeLoadError) {
-        setLiveStripeError(liveStripeLoadError);
-      }
-    });
+    testStripe.load().then(s => s ? setStripeLoaded(true) : setStripeError(testStripe.error));
+    liveStripe.load().then(s => s ? setLiveStripeLoaded(true) : setLiveStripeError(liveStripe.error));
   }, []);
 
-  const fetchClientSecret = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/stripe/create-checkout-session'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ complaintId: id }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to create checkout session');
-    }
-
-    const { clientSecret } = await response.json();
-    return clientSecret;
-  }, [id]);
-
-  const fetchLiveClientSecret = useCallback(async () => {
-    const response = await fetch(apiUrl('/api/stripe/create-live-checkout-session'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ complaintId: id }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to create live checkout session');
-    }
-
-    const { clientSecret } = await response.json();
-    return clientSecret;
-  }, [id]);
-
-  const handleStartCheckout = () => {
-    setShowCheckout(true);
-  };
+  const fetchClientSecret = useCallback(() => fetchCheckoutClientSecret('/api/stripe/create-checkout-session', id), [id]);
+  const fetchLiveClientSecret = useCallback(() => fetchCheckoutClientSecret('/api/stripe/create-live-checkout-session', id), [id]);
 
   if (isLoadingComplaint) {
     return <PaymentSkeleton />;
@@ -201,53 +205,18 @@ export default function Payment() {
                 </div>
               </div>
 
-              {stripeError ? (
-                <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-center">
-                  <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-2" />
-                  <p className="text-sm text-destructive">{stripeError}</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-3"
-                    onClick={() => window.location.reload()}
-                  >
-                    Try Again
-                  </Button>
-                </div>
-              ) : !showCheckout ? (
-                <Button 
-                  data-testid="button-pay-stripe"
-                  className="w-full h-12 text-lg shadow-lg" 
-                  size="lg"
-                  onClick={handleStartCheckout}
-                  disabled={!stripeLoaded}
-                >
-                  {!stripeLoaded ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Loading Payment Form...
-                    </>
-                  ) : (
-                    <>
-                      Pay ${(complaint.filingFee / 100).toFixed(2)} - Enter Card Details
-                    </>
-                  )}
-                </Button>
-              ) : (
-                <div className="space-y-4">
-                  <div data-testid="stripe-embedded-checkout">
-                    <EmbeddedCheckoutProvider
-                      stripe={getStripePromise()}
-                      options={{ fetchClientSecret }}
-                    >
-                      <EmbeddedCheckout />
-                    </EmbeddedCheckoutProvider>
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Complete your payment above. You'll be redirected automatically after payment.
-                  </p>
-                </div>
-              )}
+              <CheckoutSection
+                banner={null}
+                buttonLabel={`Pay $${(complaint.filingFee / 100).toFixed(2)} - Enter Card Details`}
+                loaded={stripeLoaded}
+                error={stripeError}
+                showCheckout={showCheckout}
+                onStart={() => setShowCheckout(true)}
+                stripeLoader={testStripe.load}
+                fetchSecret={fetchClientSecret}
+                completionNote="Complete your payment above. You'll be redirected automatically after payment."
+                testId="button-pay-stripe"
+              />
             </div>
           </OfficialCard>
           
@@ -269,42 +238,18 @@ export default function Payment() {
                 </div>
               </div>
 
-              {liveStripeError ? (
-                <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                  <p className="text-sm text-destructive text-center">{liveStripeError}</p>
-                </div>
-              ) : !showLiveCheckout ? (
-                <Button
-                  variant="outline"
-                  className="w-full h-12 text-lg border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/30"
-                  size="lg"
-                  onClick={() => setShowLiveCheckout(true)}
-                  disabled={!liveStripeLoaded}
-                >
-                  {!liveStripeLoaded ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>Pay $0.50 - Real Payment</>
-                  )}
-                </Button>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <EmbeddedCheckoutProvider
-                      stripe={getLiveStripePromise()}
-                      options={{ fetchClientSecret: fetchLiveClientSecret }}
-                    >
-                      <EmbeddedCheckout />
-                    </EmbeddedCheckoutProvider>
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Complete your real payment above. You'll be redirected automatically after payment.
-                  </p>
-                </div>
-              )}
+              <CheckoutSection
+                banner={null}
+                buttonLabel="Pay $0.50 - Real Payment"
+                buttonClassName="border border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                loaded={liveStripeLoaded}
+                error={liveStripeError}
+                showCheckout={showLiveCheckout}
+                onStart={() => setShowLiveCheckout(true)}
+                stripeLoader={liveStripe.load}
+                fetchSecret={fetchLiveClientSecret}
+                completionNote="Complete your real payment above. You'll be redirected automatically after payment."
+              />
             </div>
           </OfficialCard>
 

@@ -16,6 +16,51 @@ const isAuthenticated = (req: any, res: any, next: any) => {
   next();
 };
 
+// Shared helper: validates the complaint, creates an embedded Stripe checkout session, returns clientSecret.
+// Pass amount=null to use complaint.filingFee (test mode); pass an explicit cent value for live mode.
+async function createEmbeddedCheckoutSession(
+  stripe: Awaited<ReturnType<typeof import('./stripeClient').getUncachableStripeClient>>,
+  complaintId: number | undefined,
+  { amount, productName, label }: { amount: number | null; productName: string; label: string }
+): Promise<string> {
+  if (!complaintId) throw Object.assign(new Error('Complaint ID is required'), { statusCode: 400 });
+
+  const complaint = await storage.getComplaint(Number(complaintId));
+  if (!complaint) throw Object.assign(new Error('Complaint not found'), { statusCode: 404 });
+  if (complaint.status !== 'pending_payment') {
+    throw Object.assign(new Error('Payment already processed for this complaint'), { statusCode: 400 });
+  }
+
+  const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+  const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+  const unitAmount = amount ?? complaint.filingFee;
+
+  console.log(`[Stripe][${label}] Creating checkout session for complaint #${complaintId}, amount: ${unitAmount} cents`);
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: [{
+      price_data: {
+        currency: 'usd',
+        product_data: {
+          name: productName,
+          description: `Administrative fee for complaint #${complaintId}`,
+        },
+        unit_amount: unitAmount,
+      },
+      quantity: 1,
+    }],
+    mode: 'payment',
+    ui_mode: 'embedded',
+    return_url: `${baseUrl}/status/${complaintId}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+    metadata: { complaintId: String(complaintId), customerEmail: complaint.customerEmail },
+    customer_email: complaint.customerEmail,
+  });
+
+  console.log(`[Stripe][${label}] Session created: ${session.id} for complaint #${complaintId}`);
+  return session.client_secret!;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -57,8 +102,8 @@ export async function registerRoutes(
     try {
       const publishableKey = await getStripePublishableKey();
       res.json({ publishableKey });
-    } catch (err) {
-      console.error('Error getting Stripe config:', err);
+    } catch (err: any) {
+      console.error('[Stripe][Test] Failed to get config:', err.message);
       res.status(500).json({ message: 'Failed to get Stripe configuration' });
     }
   });
@@ -74,120 +119,39 @@ export async function registerRoutes(
     }
   });
 
-  // Create embedded checkout session - form displays on the same page
   app.post('/api/stripe/create-checkout-session', async (req, res) => {
     try {
       const { complaintId } = req.body;
-      
-      if (!complaintId) {
-        return res.status(400).json({ message: 'Complaint ID is required' });
-      }
-
-      const complaint = await storage.getComplaint(Number(complaintId));
-      if (!complaint) {
-        return res.status(404).json({ message: 'Complaint not found' });
-      }
-
-      if (complaint.status !== 'pending_payment') {
-        return res.status(400).json({ message: 'Payment already processed for this complaint' });
-      }
-
       const stripe = await getUncachableStripeClient();
-      
-      // Get frontend URL from SSM parameter (CloudFront URL)
-      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
-      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-
-      // Use embedded UI mode so checkout appears on-page
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: 'Complaint Filing Fee',
-                description: `Administrative fee for processing complaint #${complaint.id}`,
-              },
-              unit_amount: complaint.filingFee, // 500 cents = $5.00
-            },
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        ui_mode: 'embedded',
-        return_url: `${baseUrl}/status/${complaint.id}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        metadata: {
-          complaintId: String(complaint.id),
-          customerEmail: complaint.customerEmail,
-        },
-        customer_email: complaint.customerEmail,
+      const clientSecret = await createEmbeddedCheckoutSession(stripe, complaintId, {
+        amount: null, // use complaint.filingFee
+        productName: 'Complaint Filing Fee',
+        label: 'Test',
       });
-
-      res.json({ 
-        clientSecret: session.client_secret,
-      });
+      res.json({ clientSecret });
     } catch (err: any) {
-      console.error('Error creating checkout session:', err);
-      res.status(500).json({ message: err.message || 'Failed to create checkout session' });
+      console.error('[Stripe][Test] Error creating checkout session:', {
+        message: err.message, type: err.type, code: err.code, statusCode: err.statusCode,
+      });
+      res.status(err.statusCode || 500).json({ message: err.message || 'Failed to create checkout session' });
     }
   });
 
   app.post('/api/stripe/create-live-checkout-session', async (req, res) => {
-    const { complaintId } = req.body;
     try {
-      if (!complaintId) {
-        return res.status(400).json({ message: 'Complaint ID is required' });
-      }
-
-      const complaint = await storage.getComplaint(Number(complaintId));
-      if (!complaint) {
-        return res.status(404).json({ message: 'Complaint not found' });
-      }
-
-      if (complaint.status !== 'pending_payment') {
-        return res.status(400).json({ message: 'Payment already processed for this complaint' });
-      }
-
+      const { complaintId } = req.body;
       const stripe = getLiveStripeClient();
-      const LIVE_AMOUNT_CENTS = 50; // $0.50
-
-      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
-      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-
-      console.log(`[Stripe][Live] Creating checkout session for complaint #${complaintId}, amount: ${LIVE_AMOUNT_CENTS} cents`);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: 'Complaint Filing Fee (Real)',
-              description: `Administrative fee for complaint #${complaintId}`,
-            },
-            unit_amount: LIVE_AMOUNT_CENTS,
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        ui_mode: 'embedded',
-        return_url: `${baseUrl}/status/${complaintId}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        metadata: { complaintId: String(complaintId), customerEmail: complaint.customerEmail },
-        customer_email: complaint.customerEmail,
+      const clientSecret = await createEmbeddedCheckoutSession(stripe, complaintId, {
+        amount: 50, // $0.50
+        productName: 'Complaint Filing Fee (Real)',
+        label: 'Live',
       });
-
-      console.log(`[Stripe][Live] Session created: ${session.id} for complaint #${complaintId}`);
-      res.json({ clientSecret: session.client_secret });
+      res.json({ clientSecret });
     } catch (err: any) {
-      console.error(`[Stripe][Live] Error creating checkout session for complaint #${complaintId}:`, {
-        message: err.message,
-        type: err.type,
-        code: err.code,
-        statusCode: err.statusCode,
-        raw: err.raw,
+      console.error(`[Stripe][Live] Error creating checkout session:`, {
+        message: err.message, type: err.type, code: err.code, statusCode: err.statusCode,
       });
-      res.status(500).json({ message: err.message || 'Failed to create live checkout session' });
+      res.status(err.statusCode || 500).json({ message: err.message || 'Failed to create live checkout session' });
     }
   });
 
