@@ -158,3 +158,6 @@ infrastructure/cdk.context.json
 
 # Claude dotfiles
 .mcp.json
+
+# VS goop
+.vs/
