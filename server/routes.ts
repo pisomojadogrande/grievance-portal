@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { createChatCompletion } from "./aws/bedrock";
-import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { getUncachableStripeClient, getStripePublishableKey, getLiveStripeClient, getLiveStripePublishableKey } from "./stripeClient";
 import { getParameter } from "./aws/ssm";
 import { cognitoAuthMiddleware } from "./aws/cognito";
 import { adminLoginSchema } from "@shared/schema";
@@ -60,6 +60,17 @@ export async function registerRoutes(
     } catch (err) {
       console.error('Error getting Stripe config:', err);
       res.status(500).json({ message: 'Failed to get Stripe configuration' });
+    }
+  });
+
+  app.get('/api/stripe/live-config', async (req, res) => {
+    try {
+      const publishableKey = getLiveStripePublishableKey();
+      console.log('[Stripe][Live] Config requested, key prefix:', publishableKey.substring(0, 12));
+      res.json({ publishableKey });
+    } catch (err: any) {
+      console.error('[Stripe][Live] Failed to get live config:', err.message);
+      res.status(500).json({ message: 'Live payment not available: ' + err.message });
     }
   });
 
@@ -122,6 +133,64 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/stripe/create-live-checkout-session', async (req, res) => {
+    const { complaintId } = req.body;
+    try {
+      if (!complaintId) {
+        return res.status(400).json({ message: 'Complaint ID is required' });
+      }
+
+      const complaint = await storage.getComplaint(Number(complaintId));
+      if (!complaint) {
+        return res.status(404).json({ message: 'Complaint not found' });
+      }
+
+      if (complaint.status !== 'pending_payment') {
+        return res.status(400).json({ message: 'Payment already processed for this complaint' });
+      }
+
+      const stripe = getLiveStripeClient();
+      const LIVE_AMOUNT_CENTS = 50; // $0.50
+
+      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+
+      console.log(`[Stripe][Live] Creating checkout session for complaint #${complaintId}, amount: ${LIVE_AMOUNT_CENTS} cents`);
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Complaint Filing Fee (Real)',
+              description: `Administrative fee for complaint #${complaintId}`,
+            },
+            unit_amount: LIVE_AMOUNT_CENTS,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        ui_mode: 'embedded',
+        return_url: `${baseUrl}/status/${complaintId}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        metadata: { complaintId: String(complaintId), customerEmail: complaint.customerEmail },
+        customer_email: complaint.customerEmail,
+      });
+
+      console.log(`[Stripe][Live] Session created: ${session.id} for complaint #${complaintId}`);
+      res.json({ clientSecret: session.client_secret });
+    } catch (err: any) {
+      console.error(`[Stripe][Live] Error creating checkout session for complaint #${complaintId}:`, {
+        message: err.message,
+        type: err.type,
+        code: err.code,
+        statusCode: err.statusCode,
+        raw: err.raw,
+      });
+      res.status(500).json({ message: err.message || 'Failed to create live checkout session' });
+    }
+  });
+
   // === Verify Checkout Session (called from success page) ===
   // This is the primary source of truth for payment processing
   // Uses idempotency check to prevent double-processing
@@ -148,7 +217,9 @@ export async function registerRoutes(
         });
       }
 
-      const stripe = await getUncachableStripeClient();
+      const isLiveSession = sessionId.startsWith('cs_live_');
+      console.log(`[Stripe][${isLiveSession ? 'Live' : 'Test'}] Verifying session ${sessionId} for complaint #${complaintId}`);
+      const stripe = isLiveSession ? getLiveStripeClient() : await getUncachableStripeClient();
       const session = await stripe.checkout.sessions.retrieve(sessionId);
 
       if (session.payment_status === 'paid' && session.metadata?.complaintId === String(complaintId)) {
@@ -183,7 +254,13 @@ export async function registerRoutes(
       });
 
     } catch (err: any) {
-      console.error('Error verifying session:', err);
+      console.error('Error verifying session:', {
+        message: err.message,
+        type: err.type,
+        code: err.code,
+        statusCode: err.statusCode,
+        raw: err.raw,
+      });
       res.status(500).json({ message: err.message || 'Failed to verify session' });
     }
   });

@@ -10,6 +10,8 @@ process.env.DATABASE_URL = 'postgresql://admin:password@<DSQL_CLUSTER_ID>.dsql.u
 process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 process.env.STRIPE_PUBLISHABLE_KEY = 'pk_test_mock';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_mock';
+process.env.STRIPE_LIVE_SECRET_KEY = 'rk_live_mock';
+process.env.STRIPE_LIVE_PUBLISHABLE_KEY = 'pk_live_mock';
 process.env.SESSION_SECRET = 'test-session-secret';
 
 // Load the handler

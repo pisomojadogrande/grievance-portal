@@ -27,6 +27,9 @@ export class ParametersStack extends cdk.Stack {
       description: 'Stripe webhook secret - update after deployment',
     });
 
+    // Note: live-secret-key and live-publishable-key are managed outside CDK (created via AWS CLI)
+    // to avoid overwriting real key values with PLACEHOLDER on redeploy.
+
     // Session secret
     new ssm.StringParameter(this, 'SessionSecret', {
       parameterName: '/grievance-portal/session/secret',

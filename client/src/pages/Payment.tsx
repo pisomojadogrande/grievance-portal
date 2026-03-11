@@ -36,6 +36,28 @@ function getStripePromise(): Promise<Stripe | null> {
   return stripePromise;
 }
 
+let liveStripePromise: Promise<Stripe | null> | null = null;
+let liveStripeLoadError: string | null = null;
+
+function getLiveStripePromise(): Promise<Stripe | null> {
+  if (!liveStripePromise) {
+    liveStripePromise = fetch(apiUrl('/api/stripe/live-config'))
+      .then(res => {
+        if (!res.ok) return res.json().then(d => { throw new Error(d.message || 'Failed to load live payment configuration'); });
+        return res.json();
+      })
+      .then(({ publishableKey }) => {
+        if (!publishableKey) throw new Error('Live payment configuration missing');
+        return loadStripe(publishableKey);
+      })
+      .catch(err => {
+        liveStripeLoadError = err.message;
+        return null;
+      });
+  }
+  return liveStripePromise;
+}
+
 export default function Payment() {
   const [, params] = useRoute("/payment/:id");
   const [, setLocation] = useLocation();
@@ -46,6 +68,9 @@ export default function Payment() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [stripeLoaded, setStripeLoaded] = useState(false);
   const [stripeError, setStripeError] = useState<string | null>(null);
+  const [showLiveCheckout, setShowLiveCheckout] = useState(false);
+  const [liveStripeLoaded, setLiveStripeLoaded] = useState(false);
+  const [liveStripeError, setLiveStripeError] = useState<string | null>(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -60,12 +85,20 @@ export default function Payment() {
   }, [id, toast]);
 
   useEffect(() => {
-    // Pre-load Stripe
+    // Pre-load Stripe (test)
     getStripePromise().then((stripe) => {
       if (stripe) {
         setStripeLoaded(true);
       } else if (stripeLoadError) {
         setStripeError(stripeLoadError);
+      }
+    });
+    // Pre-load Stripe (live)
+    getLiveStripePromise().then((stripe) => {
+      if (stripe) {
+        setLiveStripeLoaded(true);
+      } else if (liveStripeLoadError) {
+        setLiveStripeError(liveStripeLoadError);
       }
     });
   }, []);
@@ -80,6 +113,22 @@ export default function Payment() {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || 'Failed to create checkout session');
+    }
+
+    const { clientSecret } = await response.json();
+    return clientSecret;
+  }, [id]);
+
+  const fetchLiveClientSecret = useCallback(async () => {
+    const response = await fetch(apiUrl('/api/stripe/create-live-checkout-session'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ complaintId: id }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create live checkout session');
     }
 
     const { clientSecret } = await response.json();
@@ -202,6 +251,63 @@ export default function Payment() {
             </div>
           </OfficialCard>
           
+          <div className="mt-8 flex items-center gap-3">
+            <div className="flex-1 border-t border-border" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">or</span>
+            <div className="flex-1 border-t border-border" />
+          </div>
+
+          <OfficialCard className="mt-6">
+            <div className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-800 flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-sm text-blue-800 dark:text-blue-300">Real Payment — $0.50</h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                    This charges <strong>$0.50</strong> to your actual credit card via Stripe live mode. Use your real card details.
+                  </p>
+                </div>
+              </div>
+
+              {liveStripeError ? (
+                <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <p className="text-sm text-destructive text-center">{liveStripeError}</p>
+                </div>
+              ) : !showLiveCheckout ? (
+                <Button
+                  variant="outline"
+                  className="w-full h-12 text-lg border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                  size="lg"
+                  onClick={() => setShowLiveCheckout(true)}
+                  disabled={!liveStripeLoaded}
+                >
+                  {!liveStripeLoaded ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>Pay $0.50 - Real Payment</>
+                  )}
+                </Button>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <EmbeddedCheckoutProvider
+                      stripe={getLiveStripePromise()}
+                      options={{ fetchClientSecret: fetchLiveClientSecret }}
+                    >
+                      <EmbeddedCheckout />
+                    </EmbeddedCheckoutProvider>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Complete your real payment above. You'll be redirected automatically after payment.
+                  </p>
+                </div>
+              )}
+            </div>
+          </OfficialCard>
+
           <p className="text-center text-xs text-muted-foreground mt-6 max-w-sm mx-auto">
             By proceeding with payment, you agree to the non-refundable filing fee for the administrative processing of your complaint. Secure payment powered by Stripe.
           </p>

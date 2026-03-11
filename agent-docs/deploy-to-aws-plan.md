@@ -963,6 +963,39 @@ aws codepipeline get-pipeline-state --name grievance-portal-pipeline
 
 ---
 
+## Live Stripe Mode (Implemented 2026-03-11)
+
+### Architecture
+- Test mode uses a restricted key (`rk_test_...`) at `/grievance-portal/stripe/secret-key` in SSM
+- Live mode uses separate restricted live keys at `/grievance-portal/stripe/live-secret-key` and `live-publishable-key`
+- Both modes use Stripe embedded Checkout on the Payment page
+
+### New SSM Parameters
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `/grievance-portal/stripe/live-secret-key` | SecureString | Restricted live key (`rk_live_...`) |
+| `/grievance-portal/stripe/live-publishable-key` | String | Live publishable key (`pk_live_...`) |
+
+### New Backend Routes
+- `GET /api/stripe/live-config` — returns live publishable key
+- `POST /api/stripe/create-live-checkout-session` — creates $0.50 live checkout session
+
+### Session Detection in verify-session
+- Sessions prefixed `cs_live_` use `getLiveStripeClient()`
+- Sessions prefixed `cs_test_` use `getUncachableStripeClient()`
+
+### Frontend UX
+- Default (test) section: amber banner, $5.00, test card instructions
+- "— or —" divider below the card
+- Live section: blue banner, $0.50, real card, separate `EmbeddedCheckoutProvider` with live key
+
+### To Enable
+1. Add SSM params via AWS CLI (see Step 0 and Step 1 in stripe-live-mode.md)
+2. Deploy Lambda: `npm run deploy:lambda`
+3. Deploy frontend: `npm run deploy:frontend`
+
+---
+
 ## Future Enhancements
 
 ### Stripe Webhook Implementation

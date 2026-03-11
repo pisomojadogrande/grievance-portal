@@ -98,7 +98,7 @@ export default function FileComplaint() {
                 </div>
 
                 <p className="text-xs text-center text-muted-foreground italic">
-                  This is a satirical demo site. No real payments are processed. Use test card: 4242 4242 4242 4242
+                  This is a satirical demo site. By default, test payments use Stripe sandbox. A real payment option ($0.50) is available at checkout.
                 </p>
 
                 <div className="flex justify-end pt-4 border-t border-border">
