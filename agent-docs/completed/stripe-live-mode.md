@@ -1,5 +1,7 @@
 # Stripe Live Mode + Restricted Test Key
 
+The work described here is complete.  Keeping the plan around for posterity.
+
 ## Context
 The grievance portal currently uses Stripe test/sandbox keys stored in SSM, loaded via `server/init.ts` into env vars. The Stripe client is created in `server/stripeClient.ts` and used in `server/routes.ts` for checkout session creation and verification. The Payment page (`client/src/pages/Payment.tsx`) shows a hardcoded amber "Test Mode" banner and the $5.00 amount from `complaint.filingFee`.
 
