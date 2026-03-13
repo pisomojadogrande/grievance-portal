@@ -4,23 +4,30 @@ let cachedParams: Record<string, string> | null = null;
 
 async function loadParameters(): Promise<Record<string, string>> {
   const ssmClient = new SSMClient({ region: process.env.AWS_REGION || 'us-east-1' });
-  
-  const response = await ssmClient.send(
-    new GetParametersByPathCommand({
-      Path: '/grievance-portal/',
-      Recursive: true,
-      WithDecryption: true,
-    })
-  );
-  
+
   const params: Record<string, string> = {};
-  response.Parameters?.forEach(param => {
-    const key = param.Name?.replace('/grievance-portal/', '');
-    if (key && param.Value) {
-      params[key] = param.Value;
-    }
-  });
-  
+  let nextToken: string | undefined;
+
+  do {
+    const response = await ssmClient.send(
+      new GetParametersByPathCommand({
+        Path: '/grievance-portal/',
+        Recursive: true,
+        WithDecryption: true,
+        NextToken: nextToken,
+      })
+    );
+
+    response.Parameters?.forEach(param => {
+      const key = param.Name?.replace('/grievance-portal/', '');
+      if (key && param.Value) {
+        params[key] = param.Value;
+      }
+    });
+
+    nextToken = response.NextToken;
+  } while (nextToken);
+
   return params;
 }
 

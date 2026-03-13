@@ -12,6 +12,8 @@ process.env.STRIPE_PUBLISHABLE_KEY = 'pk_test_mock';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_mock';
 process.env.STRIPE_LIVE_SECRET_KEY = 'rk_live_mock';
 process.env.STRIPE_LIVE_PUBLISHABLE_KEY = 'pk_live_mock';
+process.env.STRIPE_PRICE_REGISTERED_COMPLAINANT = 'price_mock_registered';
+process.env.STRIPE_PRICE_PRO_COMPLAINANT = 'price_mock_pro';
 process.env.SESSION_SECRET = 'test-session-secret';
 
 // Load the handler

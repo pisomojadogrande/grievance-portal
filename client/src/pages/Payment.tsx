@@ -13,6 +13,19 @@ import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe
 
 import { apiUrl } from "@/config";
 
+const TIER_NAMES: Record<string, string> = {
+  registered_complainant: 'Registered Complainant',
+  pro_complainant: 'Pro Complainant',
+};
+
+interface SubscriptionStatus {
+  active: boolean;
+  tier?: string;
+  complaintsUsed?: number;
+  complaintsAllowed?: number | null;
+  currentPeriodEnd?: string;
+}
+
 // Factory: lazily loads a Stripe instance by fetching the publishable key from configUrl.
 // The returned promise is cached so Stripe is only initialized once per mode.
 function makeStripeLoader(configUrl: string): { load: () => Promise<Stripe | null>; error: string | null } {
@@ -122,6 +135,9 @@ export default function Payment() {
   const [showLiveCheckout, setShowLiveCheckout] = useState(false);
   const [liveStripeLoaded, setLiveStripeLoaded] = useState(false);
   const [liveStripeError, setLiveStripeError] = useState<string | null>(null);
+  const [subStatus, setSubStatus] = useState<SubscriptionStatus | null>(null);
+  const [subLoading, setSubLoading] = useState(false);
+  const [subUsing, setSubUsing] = useState(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -140,6 +156,37 @@ export default function Payment() {
     liveStripe.load().then(s => s ? setLiveStripeLoaded(true) : setLiveStripeError(liveStripe.error));
   }, []);
 
+  useEffect(() => {
+    if (!complaint?.customerEmail) return;
+    setSubLoading(true);
+    fetch(apiUrl(`/api/subscriptions/status?email=${encodeURIComponent(complaint.customerEmail)}`))
+      .then(res => res.ok ? res.json() : null)
+      .then(data => setSubStatus(data))
+      .catch(() => setSubStatus(null))
+      .finally(() => setSubLoading(false));
+  }, [complaint?.customerEmail]);
+
+  const handleUseSubscription = async () => {
+    if (!complaint) return;
+    setSubUsing(true);
+    try {
+      const res = await fetch(apiUrl('/api/subscriptions/use-complaint'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ complaintId: complaint.id, email: complaint.customerEmail }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to process complaint');
+      }
+      // Use full navigation to bypass stale React Query cache (complaint still shows pending_payment)
+      window.location.href = `/status/${complaint.id}`;
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      setSubUsing(false);
+    }
+  };
+
   const fetchClientSecret = useCallback(() => fetchCheckoutClientSecret('/api/stripe/create-checkout-session', id), [id]);
   const fetchLiveClientSecret = useCallback(() => fetchCheckoutClientSecret('/api/stripe/create-live-checkout-session', id), [id]);
 
@@ -156,6 +203,12 @@ export default function Payment() {
     return null;
   }
 
+  const hasAllowanceRemaining = !subLoading && subStatus?.active && (
+    subStatus.complaintsAllowed === null ||
+    (subStatus.complaintsUsed ?? 0) < (subStatus.complaintsAllowed ?? 0)
+  );
+  const allowanceExhausted = !subLoading && subStatus?.active && !hasAllowanceRemaining;
+
   return (
     <div className="min-h-screen bg-background font-sans pb-20">
       <OfficialHeader />
@@ -171,15 +224,61 @@ export default function Payment() {
               <h1 className="text-2xl font-serif font-bold text-foreground">Remit Filing Fee</h1>
               <p className="text-sm text-muted-foreground font-mono mt-1">Case #{complaint.id}</p>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Amount Due</div>
-              <div className="text-2xl font-mono font-bold text-foreground flex items-center justify-end">
-                <DollarSign className="w-5 h-5 text-muted-foreground" />
-                {(complaint.filingFee / 100).toFixed(2)}
+            {!hasAllowanceRemaining && (
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Amount Due</div>
+                <div className="text-2xl font-mono font-bold text-foreground flex items-center justify-end">
+                  <DollarSign className="w-5 h-5 text-muted-foreground" />
+                  {(complaint.filingFee / 100).toFixed(2)}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
+          {allowanceExhausted && (
+            <div className="mb-6 bg-muted/60 p-4 rounded-lg border border-border">
+              <h4 className="font-semibold text-sm text-muted-foreground">
+                {TIER_NAMES[subStatus!.tier!] ?? subStatus!.tier} Membership — Allowance Exhausted
+              </h4>
+              <p className="text-sm text-muted-foreground mt-1">
+                You have used all {subStatus!.complaintsAllowed} complaints this month.
+                Resets {subStatus!.currentPeriodEnd ? new Date(subStatus!.currentPeriodEnd).toLocaleDateString() : 'next month'}.
+                You can still file below for the standard fee.
+              </p>
+            </div>
+          )}
+
+          {hasAllowanceRemaining && (
+            <OfficialCard className="mb-6">
+              <div className="bg-green-50 dark:bg-green-950/30 p-4 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-sm text-green-800 dark:text-green-300">
+                      {TIER_NAMES[subStatus!.tier!] ?? subStatus!.tier} Membership
+                    </h4>
+                    <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                      {subStatus!.complaintsAllowed === null
+                        ? 'Unlimited complaints included in your membership.'
+                        : `${subStatus!.complaintsUsed} of ${subStatus!.complaintsAllowed} complaints used this month.`}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white"
+                  size="lg"
+                  onClick={handleUseSubscription}
+                  disabled={subUsing}
+                >
+                  {subUsing
+                    ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</>
+                    : 'File Using Subscription — Free'}
+                </Button>
+              </div>
+            </OfficialCard>
+          )}
+
+          {!hasAllowanceRemaining && <>
           <OfficialCard>
             <div className="space-y-6">
               <div className="bg-primary/5 p-4 rounded-lg border border-primary/10 flex items-start gap-3">
@@ -219,7 +318,7 @@ export default function Payment() {
               />
             </div>
           </OfficialCard>
-          
+
           <div className="mt-8 flex items-center gap-3">
             <div className="flex-1 border-t border-border" />
             <span className="text-xs text-muted-foreground uppercase tracking-wider">or</span>
@@ -252,9 +351,12 @@ export default function Payment() {
               />
             </div>
           </OfficialCard>
+          </>}
 
           <p className="text-center text-xs text-muted-foreground mt-6 max-w-sm mx-auto">
-            By proceeding with payment, you agree to the non-refundable filing fee for the administrative processing of your complaint. Secure payment powered by Stripe.
+            {hasAllowanceRemaining
+              ? 'File your complaint using your membership allowance above.'
+              : 'By proceeding with payment, you agree to the non-refundable filing fee for the administrative processing of your complaint. Secure payment powered by Stripe.'}
           </p>
         </motion.div>
       </main>

@@ -8,6 +8,8 @@ import FileComplaint from "@/pages/FileComplaint";
 import Payment from "@/pages/Payment";
 import Status from "@/pages/Status";
 import Admin from "@/pages/Admin";
+import Subscribe from "@/pages/Subscribe";
+import SubscriptionConfirmation from "@/pages/SubscriptionConfirmation";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +20,8 @@ function Router() {
       <Route path="/payment/:id" component={Payment} />
       <Route path="/status/:id" component={Status} />
       <Route path="/admin" component={Admin} />
+      <Route path="/subscribe" component={Subscribe} />
+      <Route path="/subscription/confirmation" component={SubscriptionConfirmation} />
       <Route component={NotFound} />
     </Switch>
   );

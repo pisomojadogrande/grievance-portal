@@ -20,6 +20,7 @@ async function createTables() {
 
   // Drop existing tables (in reverse order due to potential references)
   console.log('Dropping existing tables if they exist...');
+  await db.execute(sql`DROP TABLE IF EXISTS subscriptions CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS payments CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS complaints CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS admin_users CASCADE`);
@@ -60,10 +61,29 @@ async function createTables() {
       amount INTEGER NOT NULL,
       status TEXT DEFAULT 'pending' NOT NULL,
       transaction_id TEXT,
+      mode TEXT DEFAULT 'test' NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `);
   console.log('✓ payments table created');
+
+  // Create subscriptions table with INTEGER id (manual management)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id INTEGER PRIMARY KEY,
+      customer_email TEXT NOT NULL,
+      stripe_customer_id TEXT NOT NULL,
+      stripe_subscription_id TEXT NOT NULL UNIQUE,
+      stripe_price_id TEXT NOT NULL,
+      tier TEXT NOT NULL,
+      status TEXT NOT NULL,
+      mode TEXT DEFAULT 'test' NOT NULL,
+      current_period_start TIMESTAMP NOT NULL,
+      current_period_end TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  console.log('✓ subscriptions table created');
 
   console.log('\n✅ All tables created successfully!');
   

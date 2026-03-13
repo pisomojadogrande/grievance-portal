@@ -197,6 +197,7 @@ export async function registerRoutes(
         const payment = await storage.createPayment({
           complaintId: Number(complaintId),
           amount: session.amount_total || 500,
+          mode: isLiveSession ? 'live' : 'test',
         });
 
         // Update payment with transaction details
@@ -267,6 +268,119 @@ export async function registerRoutes(
         });
       }
       throw err;
+    }
+  });
+
+  // === Subscription Routes ===
+
+  app.get('/api/subscriptions/status', async (req, res) => {
+    try {
+      const email = req.query.email as string;
+      if (!email) return res.status(400).json({ message: 'email query param is required' });
+
+      const sub = await storage.getSubscriptionByEmail(email);
+      if (!sub) return res.json({ active: false });
+
+      const complaintsUsed = await storage.countComplaintsInPeriod(email, sub.currentPeriodStart);
+      const complaintsAllowed = sub.tier === 'pro_complainant' ? null : 3;
+
+      res.json({
+        active: true,
+        tier: sub.tier,
+        complaintsUsed,
+        complaintsAllowed,
+        currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
+      });
+    } catch (err: any) {
+      console.error('[Subscriptions] Error fetching status:', err.message);
+      res.status(500).json({ message: 'Failed to fetch subscription status' });
+    }
+  });
+
+  app.post('/api/subscriptions/create-checkout-session', async (req, res) => {
+    try {
+      const { email, tier } = req.body;
+      if (!email || !tier) return res.status(400).json({ message: 'email and tier are required' });
+      if (!['registered_complainant', 'pro_complainant'].includes(tier)) {
+        return res.status(400).json({ message: 'Invalid tier' });
+      }
+
+      const priceId = tier === 'pro_complainant'
+        ? process.env.STRIPE_PRICE_PRO_COMPLAINANT
+        : process.env.STRIPE_PRICE_REGISTERED_COMPLAINANT;
+
+      if (!priceId) return res.status(500).json({ message: 'Subscription prices not configured' });
+
+      const stripe = await getUncachableStripeClient();
+      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{ price: priceId, quantity: 1 }],
+        mode: 'subscription',
+        ui_mode: 'embedded',
+        return_url: `${baseUrl}/subscription/confirmation?session_id={CHECKOUT_SESSION_ID}`,
+        customer_email: email,
+        metadata: { email, tier },
+      });
+
+      res.json({ clientSecret: session.client_secret });
+    } catch (err: any) {
+      console.error('[Subscriptions] Error creating checkout session:', err.message);
+      res.status(err.statusCode || 500).json({ message: err.message || 'Failed to create subscription session' });
+    }
+  });
+
+  app.post('/api/subscriptions/use-complaint', async (req, res) => {
+    try {
+      const { complaintId, email } = req.body;
+      if (!complaintId || !email) return res.status(400).json({ message: 'complaintId and email are required' });
+
+      const complaint = await storage.getComplaint(Number(complaintId));
+      if (!complaint) return res.status(404).json({ message: 'Complaint not found' });
+      if (complaint.customerEmail !== email) return res.status(403).json({ message: 'Email does not match complaint' });
+      if (complaint.status !== 'pending_payment') return res.status(400).json({ message: 'Complaint already processed' });
+
+      const sub = await storage.getSubscriptionByEmail(email);
+      if (!sub) return res.status(403).json({ message: 'No active subscription' });
+
+      if (sub.tier === 'registered_complainant') {
+        const used = await storage.countComplaintsInPeriod(email, sub.currentPeriodStart);
+        if (used >= 3) return res.status(403).json({ message: 'Monthly allowance exhausted' });
+      }
+
+      await storage.updateComplaint(Number(complaintId), { status: 'received' });
+      await generateBureaucraticResponse(Number(complaintId), complaint.content);
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[Subscriptions] Error using complaint allowance:', err.message);
+      res.status(500).json({ message: err.message || 'Failed to process subscription complaint' });
+    }
+  });
+
+  app.post('/api/subscriptions/customer-portal', async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: 'email is required' });
+
+      const sub = await storage.getSubscriptionByEmail(email);
+      if (!sub) return res.status(404).json({ message: 'No active subscription found' });
+
+      const stripe = await getUncachableStripeClient();
+      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+
+      const portalSession = await stripe.billingPortal.sessions.create({
+        customer: sub.stripeCustomerId,
+        return_url: `${baseUrl}/`,
+      });
+
+      res.json({ url: portalSession.url });
+    } catch (err: any) {
+      console.error('[Subscriptions] Error creating portal session:', err.message);
+      res.status(500).json({ message: err.message || 'Failed to create customer portal session' });
     }
   });
 

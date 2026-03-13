@@ -61,6 +61,7 @@ export const payments = pgTable("payments", {
   amount: integer("amount").notNull(), // in cents
   status: text("status", { enum: ["pending", "succeeded", "failed"] }).default("pending").notNull(),
   transactionId: text("transaction_id"), // Mock transaction ID
+  mode: text("mode", { enum: ["test", "live"] }).default("test").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -83,6 +84,23 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
   transactionId: true,
   createdAt: true
 });
+
+export const subscriptions = pgTable('subscriptions', {
+  id: integer('id').primaryKey(),
+  customerEmail: text('customer_email').notNull(),
+  stripeCustomerId: text('stripe_customer_id').notNull(),
+  stripeSubscriptionId: text('stripe_subscription_id').notNull().unique(),
+  stripePriceId: text('stripe_price_id').notNull(),
+  tier: text('tier', { enum: ['registered_complainant', 'pro_complainant'] }).notNull(),
+  status: text('status', { enum: ['active', 'canceled', 'past_due', 'incomplete', 'trialing'] }).notNull(),
+  mode: text('mode', { enum: ['test', 'live'] }).default('test').notNull(),
+  currentPeriodStart: timestamp('current_period_start').notNull(),
+  currentPeriodEnd: timestamp('current_period_end').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type Subscription = typeof subscriptions.$inferSelect;
+export type InsertSubscription = Omit<Subscription, 'id' | 'createdAt'>;
 
 // === EXPLICIT API CONTRACT TYPES ===
 export type Complaint = typeof complaints.$inferSelect;

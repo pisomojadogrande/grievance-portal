@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { OfficialHeader } from "@/components/OfficialHeader";
 import { OfficialCard } from "@/components/OfficialCard";
 import { Button } from "@/components/ui/button";
-import { FileText, ShieldCheck, Clock } from "lucide-react";
+import { FileText, ShieldCheck, Clock, Star } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Home() {
@@ -34,8 +34,8 @@ export default function Home() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 className="h-14 px-8 text-base shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
                 onClick={() => setLocation("/file-complaint")}
                 data-testid="button-file-complaint"
@@ -43,10 +43,21 @@ export default function Home() {
                 <FileText className="mr-2 h-5 w-5" />
                 File a Complaint
               </Button>
-              <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-lg border border-border/50 text-sm font-mono text-muted-foreground">
-                <span>Filing Fee:</span>
-                <span className="font-bold text-foreground">$5.00</span>
-              </div>
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-14 px-8 text-base transition-all hover:-translate-y-0.5"
+                onClick={() => setLocation("/subscribe")}
+              >
+                <Star className="mr-2 h-5 w-5" />
+                Subscribe
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-lg border border-border/50 text-sm font-mono text-muted-foreground w-fit">
+              <span>Filing Fee:</span>
+              <span className="font-bold text-foreground">$5.00</span>
+              <span className="text-muted-foreground">or from</span>
+              <span className="font-bold text-foreground">$3/mo</span>
             </div>
 
             <div className="grid grid-cols-2 gap-6 pt-8 border-t border-dashed">
