@@ -26,36 +26,33 @@ declare module "http" {
   }
 }
 
-// Stripe webhook route MUST be registered BEFORE express.json() middleware
+// Stripe webhook routes MUST be registered BEFORE express.json() middleware
 // This ensures the raw body is available for signature verification
-app.post(
-  '/api/stripe/webhook',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    const signature = req.headers['stripe-signature'];
 
+function makeWebhookHandler(secretEnvVar: string) {
+  return async (req: express.Request, res: express.Response) => {
+    const signature = req.headers['stripe-signature'];
     if (!signature) {
       return res.status(400).json({ error: 'Missing stripe-signature header' });
     }
-
+    const webhookSecret = process.env[secretEnvVar];
+    if (!webhookSecret) {
+      console.error(`${secretEnvVar} not configured`);
+      return res.status(500).json({ error: 'Webhook not configured' });
+    }
     try {
       const sig = Array.isArray(signature) ? signature[0] : signature;
-      
-      // Get webhook secret from environment
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-      if (!webhookSecret) {
-        console.error('STRIPE_WEBHOOK_SECRET not configured');
-        return res.status(500).json({ error: 'Webhook not configured' });
-      }
-
       await WebhookHandlers.processWebhook(req.body as Buffer, sig, webhookSecret);
       res.status(200).json({ received: true });
     } catch (error: any) {
       console.error('Webhook error:', error.message);
       res.status(400).json({ error: 'Webhook processing error' });
     }
-  }
-);
+  };
+}
+
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), makeWebhookHandler('STRIPE_WEBHOOK_SECRET'));
+app.post('/api/stripe/live-webhook', express.raw({ type: 'application/json' }), makeWebhookHandler('STRIPE_LIVE_WEBHOOK_SECRET'));
 
 app.use(
   express.json({

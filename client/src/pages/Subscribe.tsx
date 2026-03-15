@@ -15,7 +15,8 @@ const TIERS = [
   {
     id: 'registered_complainant' as Tier,
     name: 'Registered Complainant',
-    price: '$3',
+    testPrice: '$3',
+    livePrice: '$0.30',
     period: '/month',
     allowance: '3 complaints per month',
     description: 'For the occasional aggrieved party.',
@@ -24,7 +25,8 @@ const TIERS = [
   {
     id: 'pro_complainant' as Tier,
     name: 'Pro Complainant',
-    price: '$8',
+    testPrice: '$8',
+    livePrice: '$0.80',
     period: '/month',
     allowance: 'Unlimited complaints',
     description: 'For the chronically dissatisfied.',
@@ -32,41 +34,64 @@ const TIERS = [
   },
 ];
 
-let stripePromise: Promise<Stripe | null> | null = null;
-
-async function getTestStripe(): Promise<Stripe | null> {
-  if (!stripePromise) {
-    stripePromise = fetch(apiUrl('/api/stripe/config'))
-      .then(res => res.ok ? res.json() : Promise.reject(new Error('Failed to load config')))
-      .then(({ publishableKey }: { publishableKey: string }) => loadStripe(publishableKey))
-      .catch(() => null);
-  }
-  return stripePromise;
+// Lazily loads a Stripe instance, cached per mode.
+function makeStripeLoader(configUrl: string): () => Promise<Stripe | null> {
+  let promise: Promise<Stripe | null> | null = null;
+  return () => {
+    if (!promise) {
+      promise = fetch(apiUrl(configUrl))
+        .then(res => res.ok ? res.json() : Promise.reject(new Error('Failed to load config')))
+        .then(({ publishableKey }: { publishableKey: string }) => loadStripe(publishableKey))
+        .catch(() => null);
+    }
+    return promise;
+  };
 }
+
+const getTestStripe = makeStripeLoader('/api/stripe/config');
+const getLiveStripe = makeStripeLoader('/api/stripe/live-config');
 
 export default function Subscribe() {
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [email, setEmail] = useState('');
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const handleSubscribe = async () => {
+  const [testClientSecret, setTestClientSecret] = useState<string | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+
+  const [liveClientSecret, setLiveClientSecret] = useState<string | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  const handleTierSelect = (tier: Tier) => {
+    setSelectedTier(tier);
+    setTestClientSecret(null);
+    setLiveClientSecret(null);
+    setTestError(null);
+    setLiveError(null);
+  };
+
+  const handleSubscribe = async (mode: 'test' | 'live') => {
     if (!email || !selectedTier) return;
+    const tier = selectedTier;
+    const emailValue = email;
+    const setLoading = mode === 'test' ? setTestLoading : setLiveLoading;
+    const setError = mode === 'test' ? setTestError : setLiveError;
+    const setClientSecret = mode === 'test' ? setTestClientSecret : setLiveClientSecret;
+    const endpoint = mode === 'test'
+      ? '/api/subscriptions/create-checkout-session'
+      : '/api/subscriptions/create-live-checkout-session';
+
     setLoading(true);
     setError(null);
     try {
-      // Capture tier and email as locals so there's no stale closure risk
-      const tier = selectedTier;
-      const emailValue = email;
-
       const [res] = await Promise.all([
-        fetch(apiUrl('/api/subscriptions/create-checkout-session'), {
+        fetch(apiUrl(endpoint), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: emailValue, tier }),
         }),
-        getTestStripe(),
+        mode === 'test' ? getTestStripe() : getLiveStripe(),
       ]);
 
       if (!res.ok) {
@@ -75,11 +100,8 @@ export default function Subscribe() {
       }
 
       const { clientSecret: secret } = await res.json();
-
-      // Save for confirmation page (survives Stripe redirect)
       sessionStorage.setItem('subscribe_email', emailValue);
       sessionStorage.setItem('subscribe_tier', tier);
-
       setClientSecret(secret);
     } catch (err: any) {
       setError(err.message || 'Failed to initialize payment');
@@ -87,6 +109,8 @@ export default function Subscribe() {
       setLoading(false);
     }
   };
+
+  const tierInfo = TIERS.find(t => t.id === selectedTier);
 
   return (
     <div className="min-h-screen bg-background font-sans pb-20">
@@ -104,7 +128,7 @@ export default function Subscribe() {
             </div>
             <h1 className="text-3xl font-serif font-bold text-foreground">Subscribe to The Complaints Department</h1>
             <p className="mt-3 text-muted-foreground">
-              File complaints at a reduced rate with a monthly membership. All plans are test-mode only.
+              File complaints at a reduced rate with a monthly membership.
             </p>
           </div>
 
@@ -112,7 +136,7 @@ export default function Subscribe() {
             {TIERS.map(tier => (
               <button
                 key={tier.id}
-                onClick={() => { setSelectedTier(tier.id); setClientSecret(null); setError(null); }}
+                onClick={() => handleTierSelect(tier.id)}
                 className={`text-left rounded-lg border-2 p-5 transition-all ${
                   selectedTier === tier.id
                     ? 'border-primary bg-primary/5'
@@ -125,7 +149,7 @@ export default function Subscribe() {
                 </div>
                 <div className="font-serif font-bold text-lg text-foreground">{tier.name}</div>
                 <div className="mt-1 mb-3">
-                  <span className="text-2xl font-bold text-foreground">{tier.price}</span>
+                  <span className="text-2xl font-bold text-foreground">{tier.testPrice}</span>
                   <span className="text-muted-foreground text-sm">{tier.period}</span>
                 </div>
                 <div className="text-sm font-medium text-foreground">{tier.allowance}</div>
@@ -134,11 +158,11 @@ export default function Subscribe() {
             ))}
           </div>
 
-          {selectedTier && !clientSecret && (
+          {selectedTier && !testClientSecret && !liveClientSecret && (
             <OfficialCard>
               <div className="space-y-4">
                 <h3 className="font-serif font-semibold text-foreground">
-                  Subscribe: {TIERS.find(t => t.id === selectedTier)?.name}
+                  Subscribe: {tierInfo?.name}
                 </h3>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
@@ -149,43 +173,90 @@ export default function Subscribe() {
                     placeholder="your@email.com"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSubscribe()}
+                    onKeyDown={e => e.key === 'Enter' && handleSubscribe('test')}
                   />
                   <p className="text-xs text-muted-foreground mt-1.5">
                     Your email will be used to identify your subscription when filing complaints.
                   </p>
                 </div>
-                {error && (
-                  <div className="flex items-center gap-2 text-sm text-destructive">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    {error}
-                  </div>
-                )}
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={handleSubscribe}
-                  disabled={!email || loading}
-                >
-                  {loading
-                    ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>
-                    : `Subscribe — ${TIERS.find(t => t.id === selectedTier)?.price}/month`}
-                </Button>
+
+                {/* Test payment — primary */}
+                <div className="space-y-2">
+                  {testError && (
+                    <div className="flex items-center gap-2 text-sm text-destructive">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      {testError}
+                    </div>
+                  )}
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={() => handleSubscribe('test')}
+                    disabled={!email || testLoading}
+                  >
+                    {testLoading
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>
+                      : `Subscribe (Test) — ${tierInfo?.testPrice}/month`}
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Sandbox mode — use card 4242 4242 4242 4242. No real charge.
+                  </p>
+                </div>
+
+                {/* Live payment — secondary */}
+                <div className="border-t border-border pt-4 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Real Payment</p>
+                  {liveError && (
+                    <div className="flex items-center gap-2 text-sm text-destructive">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      {liveError}
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleSubscribe('live')}
+                    disabled={!email || liveLoading}
+                  >
+                    {liveLoading
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>
+                      : `Subscribe (Real) — ${tierInfo?.livePrice}/month`}
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    This is a real charge of {tierInfo?.livePrice}/month to your card.
+                  </p>
+                </div>
               </div>
             </OfficialCard>
           )}
 
-          {clientSecret && (
+          {testClientSecret && (
             <OfficialCard>
               <div className="space-y-4">
                 <EmbeddedCheckoutProvider
                   stripe={getTestStripe()}
-                  options={{ clientSecret }}
+                  options={{ clientSecret: testClientSecret }}
                 >
                   <EmbeddedCheckout />
                 </EmbeddedCheckoutProvider>
                 <p className="text-xs text-muted-foreground text-center">
                   Complete your subscription above. You'll be redirected automatically.
+                </p>
+              </div>
+            </OfficialCard>
+          )}
+
+          {liveClientSecret && (
+            <OfficialCard>
+              <div className="space-y-4">
+                <EmbeddedCheckoutProvider
+                  stripe={getLiveStripe()}
+                  options={{ clientSecret: liveClientSecret }}
+                >
+                  <EmbeddedCheckout />
+                </EmbeddedCheckoutProvider>
+                <p className="text-xs text-muted-foreground text-center">
+                  Complete your real subscription above. You'll be redirected automatically.
                 </p>
               </div>
             </OfficialCard>

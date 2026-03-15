@@ -3,7 +3,7 @@
 ## Status
 
 - **Steps 0–8 (test mode):** COMPLETE and verified working in production
-- **Step 9 (live mode):** IN PROGRESS
+- **Step 9 (live mode):** COMPLETE — built, deployed pending human action
 
 ---
 
@@ -136,3 +136,26 @@ process.env.STRIPE_LIVE_PRICE_PRO_COMPLAINANT = 'price_live_mock_pro';
 AWS_PROFILE=<profile> CUSTOM_DOMAIN=<domain> npm run deploy:api && npm run deploy:frontend
 ```
 Then force cold start to pick up new SSM params (see Gotchas above).
+
+---
+
+## Step 9 — What Was Built
+
+### Backend
+- `server/init.ts`: loads `stripe/live-price-registered-complainant` and `stripe/live-price-pro-complainant` from SSM
+- `server/routes.ts`: added `POST /api/subscriptions/create-live-checkout-session` using `getLiveStripeClient()` and live price IDs
+
+### Frontend
+- `client/src/pages/Subscribe.tsx`: live payment option added as secondary section below test checkout. Test is primary (outlined prominent button), live is secondary (outline variant, below a divider labeled "Real Payment"). Separate `liveClientSecret` state so test and live don't interfere. Live option uses `getLiveStripe()` loader pointing at `/api/stripe/live-config`.
+
+### Config
+- `.env.example`: added `STRIPE_LIVE_PRICE_REGISTERED_COMPLAINANT` and `STRIPE_LIVE_PRICE_PRO_COMPLAINANT` with SSM path documentation
+- `test-lambda-local.cjs`: added mock live price ID env vars
+
+### Live Stripe Products (created via Stripe MCP)
+- Registered Complainant: `price_live_xxxxxxxxxxxxxxxxxxxxxxxx` ($0.30/month, `prod_xxxxxxxxxxxx`)
+- Pro Complainant: `price_live_yyyyyyyyyyyyyyyyyyyyyyyy` ($0.80/month, `prod_yyyyyyyyyyyy`)
+
+SSM parameters stored at:
+- `/grievance-portal/stripe/live-price-registered-complainant`
+- `/grievance-portal/stripe/live-price-pro-complainant`

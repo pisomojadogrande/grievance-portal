@@ -1,4 +1,4 @@
-import { getUncachableStripeClient } from './stripeClient';
+import { getUncachableStripeClient, getLiveStripeClient } from './stripeClient';
 import { storage } from './storage';
 import Stripe from 'stripe';
 
@@ -35,8 +35,9 @@ export class WebhookHandlers {
           console.log(`[Stripe Webhook] Subscription checkout completed for ${email}`);
 
           if (email && tier && session.subscription) {
-            const stripeSub = await stripe.subscriptions.retrieve(session.subscription as string);
             const isLive = session.id.startsWith('cs_live_');
+            const stripeForSub = isLive ? await getLiveStripeClient() : stripe;
+            const stripeSub = await stripeForSub.subscriptions.retrieve(session.subscription as string);
             // Check idempotency
             const existing = await storage.getSubscriptionByStripeId(stripeSub.id);
             if (!existing) {

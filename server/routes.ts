@@ -332,6 +332,41 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/subscriptions/create-live-checkout-session', async (req, res) => {
+    try {
+      const { email, tier } = req.body;
+      if (!email || !tier) return res.status(400).json({ message: 'email and tier are required' });
+      if (!['registered_complainant', 'pro_complainant'].includes(tier)) {
+        return res.status(400).json({ message: 'Invalid tier' });
+      }
+
+      const priceId = tier === 'pro_complainant'
+        ? process.env.STRIPE_LIVE_PRICE_PRO_COMPLAINANT
+        : process.env.STRIPE_LIVE_PRICE_REGISTERED_COMPLAINANT;
+
+      if (!priceId) return res.status(500).json({ message: 'Live subscription prices not configured' });
+
+      const stripe = await getLiveStripeClient();
+      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{ price: priceId, quantity: 1 }],
+        mode: 'subscription',
+        ui_mode: 'embedded',
+        return_url: `${baseUrl}/subscription/confirmation?session_id={CHECKOUT_SESSION_ID}`,
+        customer_email: email,
+        metadata: { email, tier },
+      });
+
+      res.json({ clientSecret: session.client_secret });
+    } catch (err: any) {
+      console.error('[Subscriptions] Error creating live checkout session:', err.message);
+      res.status(err.statusCode || 500).json({ message: err.message || 'Failed to create live subscription session' });
+    }
+  });
+
   app.post('/api/subscriptions/use-complaint', async (req, res) => {
     try {
       const { complaintId, email } = req.body;

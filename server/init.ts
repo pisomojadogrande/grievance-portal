@@ -23,6 +23,9 @@ export async function initializeApp() {
     process.env.COGNITO_CLIENT_ID = params['cognito/client-id'];
     process.env.STRIPE_PRICE_REGISTERED_COMPLAINANT = params['stripe/price-registered-complainant'];
     process.env.STRIPE_PRICE_PRO_COMPLAINANT = params['stripe/price-pro-complainant'];
+    process.env.STRIPE_LIVE_PRICE_REGISTERED_COMPLAINANT = params['stripe/live-price-registered-complainant'];
+    process.env.STRIPE_LIVE_PRICE_PRO_COMPLAINANT = params['stripe/live-price-pro-complainant'];
+    process.env.STRIPE_LIVE_WEBHOOK_SECRET = params['stripe/live-webhook-secret'];
   }
   
   initialized = true;
