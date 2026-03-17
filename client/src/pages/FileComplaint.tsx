@@ -106,7 +106,7 @@ export default function FileComplaint() {
                             {TIER_NAMES[subStatus!.tier!] ?? subStatus!.tier} —{' '}
                             {subStatus!.complaintsAllowed === null
                               ? 'unlimited complaints remaining'
-                              : `${(subStatus!.complaintsAllowed ?? 0) - (subStatus!.complaintsUsed ?? 0)} of ${subStatus!.complaintsAllowed} complaints remaining this month`}
+                              : `${Math.max(0, (subStatus!.complaintsAllowed ?? 0) - (subStatus!.complaintsUsed ?? 0))} of ${subStatus!.complaintsAllowed} complaints remaining this month`}
                           </span>
                         </div>
                       ) : subStatus?.active ? (

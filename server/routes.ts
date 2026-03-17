@@ -403,7 +403,7 @@ export async function registerRoutes(
       const sub = await storage.getSubscriptionByEmail(email);
       if (!sub) return res.status(404).json({ message: 'No active subscription found' });
 
-      const stripe = await getUncachableStripeClient();
+      const stripe = sub.mode === 'live' ? await getLiveStripeClient() : await getUncachableStripeClient();
       const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
       const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
 
