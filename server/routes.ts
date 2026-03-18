@@ -453,6 +453,18 @@ export async function registerRoutes(
         },
       });
 
+      // Create the onboarding link BEFORE inserting to DB so a Stripe failure
+      // doesn't leave an orphaned slug that can never be re-registered.
+      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+
+      const link = await stripe.accountLinks.create({
+        account: account.id,
+        refresh_url: `${baseUrl}/department/onboarding?reauth=1&account=${account.id}`,
+        return_url: `${baseUrl}/department/${slug}/onboarding-complete`,
+        type: 'account_onboarding',
+      });
+
       const dept = await storage.createDepartment({
         name, slug, description: description || null, adminEmail,
         stripeAccountId: account.id,
@@ -462,16 +474,6 @@ export async function registerRoutes(
         departmentStyle: departmentStyle || null,
         signaturePhrase: signaturePhrase || null,
         promptAddendum: promptAddendum || null,
-      });
-
-      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
-      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-
-      const link = await stripe.accountLinks.create({
-        account: account.id,
-        refresh_url: `${baseUrl}/department/onboarding?reauth=1&account=${account.id}`,
-        return_url: `${baseUrl}/department/${slug}/onboarding-complete`,
-        type: 'account_onboarding',
       });
 
       console.log(`[Departments] Registered department ${slug} with Stripe account ${account.id}`);
@@ -486,7 +488,24 @@ export async function registerRoutes(
     try {
       const dept = await storage.getDepartmentBySlug(req.params.slug);
       if (!dept) return res.status(404).json({ message: 'Department not found' });
-      res.json({ id: dept.id, name: dept.name, slug: dept.slug, description: dept.description, chargesEnabled: dept.chargesEnabled });
+
+      // If DB still shows chargesEnabled=false but we have a Stripe account,
+      // reconcile by checking Stripe directly in case we missed a webhook.
+      let chargesEnabled = dept.chargesEnabled;
+      if (!chargesEnabled && dept.stripeAccountId) {
+        const stripe = await getUncachableStripeClient();
+        const account = await stripe.accounts.retrieve(dept.stripeAccountId);
+        if (account.charges_enabled) {
+          chargesEnabled = true;
+          await storage.updateDepartment(dept.id, {
+            chargesEnabled: true,
+            payoutsEnabled: account.payouts_enabled,
+          });
+          console.log(`[Connect] Reconciled department ${dept.slug}: charges_enabled now true`);
+        }
+      }
+
+      res.json({ id: dept.id, name: dept.name, slug: dept.slug, description: dept.description, chargesEnabled });
     } catch (err: any) {
       res.status(500).json({ message: 'Failed to fetch department' });
     }

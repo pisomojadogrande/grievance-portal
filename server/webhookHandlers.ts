@@ -138,13 +138,16 @@ export class WebhookHandlers {
 
       case 'account.updated': {
         const account = event.data.object as Stripe.Account;
+        console.log(`[Connect] account.updated for ${account.id}, charges_enabled: ${account.charges_enabled}`);
         const dept = await storage.getDepartmentByStripeAccountId(account.id);
         if (dept) {
           await storage.updateDepartment(dept.id, {
             chargesEnabled: account.charges_enabled,
             payoutsEnabled: account.payouts_enabled,
           });
-          console.log(`[Connect] Department ${dept.slug} charges_enabled: ${account.charges_enabled}`);
+          console.log(`[Connect] Updated department ${dept.slug} charges_enabled: ${account.charges_enabled}`);
+        } else {
+          console.log(`[Connect] No department found for account ${account.id} — ignoring`);
         }
         break;
       }

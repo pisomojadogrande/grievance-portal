@@ -19,12 +19,18 @@ Adding Stripe Connect to the complaints portal so the platform can host subsidia
 
 1. **Enable Connect** in the Stripe test dashboard: Stripe Dashboard → Connect → Get started. You'll need to configure your platform name and a few settings. This only needs to be done once.
 2. **Register a Connect webhook endpoint** (separate from the existing webhooks): Stripe Dashboard → Connect → Webhooks → Add endpoint. Point it to `https://<your-api-gateway-url>/api/stripe/connect-webhook`. Events to listen for: `account.updated`. Note the signing secret (`whsec_...`).
-3. **Store the Connect webhook secret in SSM:**
+3. **Ensure the restricted API key (`rk_test_...`) has these Connect permissions:**
+   Stripe Dashboard → Developers → API keys → edit the restricted key:
+   - Connect → **Accounts → Write**
+   - Connect → **Account Links → Write**
+
+4. **Store the Connect webhook secret in SSM:**
    ```bash
    aws ssm put-parameter \
      --name "/grievance-portal/stripe/connect-webhook-secret" \
-     --value "whsec_YOUR_SECRET" --type String --profile <profile>
+     --value "whsec_YOUR_SECRET" --type SecureString --profile <profile>
    ```
+   (SecureString is correct — SSM client uses `WithDecryption: true` so it's decrypted transparently at load time.)
 
 ---
 
