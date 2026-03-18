@@ -37,6 +37,18 @@ async function createEmbeddedCheckoutSession(
 
   console.log(`[Stripe][${label}] Creating checkout session for complaint #${complaintId}, amount: ${unitAmount} cents`);
 
+  let paymentIntentData: Record<string, any> | undefined;
+  if (complaint.departmentId) {
+    const dept = await storage.getDepartmentById(complaint.departmentId);
+    if (dept?.stripeAccountId && dept.chargesEnabled) {
+      paymentIntentData = {
+        application_fee_amount: dept.applicationFeeAmount,
+        transfer_data: { destination: dept.stripeAccountId },
+      };
+      console.log(`[Stripe][${label}] Routing to department ${dept.slug}, fee: ${dept.applicationFeeAmount} cents`);
+    }
+  }
+
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
     line_items: [{
@@ -55,6 +67,7 @@ async function createEmbeddedCheckoutSession(
     return_url: `${baseUrl}/status/${complaintId}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
     metadata: { complaintId: String(complaintId), customerEmail: complaint.customerEmail },
     customer_email: complaint.customerEmail,
+    ...(paymentIntentData ? { payment_intent_data: paymentIntentData } : {}),
   });
 
   console.log(`[Stripe][${label}] Session created: ${session.id} for complaint #${complaintId}`);
@@ -402,6 +415,141 @@ export async function registerRoutes(
     }
   });
 
+  // === Department Routes ===
+
+  app.get('/api/departments', async (_req, res) => {
+    try {
+      const depts = await storage.getActiveDepartments();
+      res.json(depts.map(d => ({ id: d.id, name: d.name, slug: d.slug, description: d.description })));
+    } catch (err: any) {
+      console.error('[Departments] Error fetching departments:', err.message);
+      res.status(500).json({ message: 'Failed to fetch departments' });
+    }
+  });
+
+  app.post('/api/departments/register', async (req, res) => {
+    try {
+      const { name, slug, description, adminEmail, officialTitle, departmentStyle, signaturePhrase, promptAddendum } = req.body;
+      if (!name || !slug || !adminEmail) {
+        return res.status(400).json({ message: 'name, slug, and adminEmail are required' });
+      }
+      const slugPattern = /^[a-z0-9-]+$/;
+      if (!slugPattern.test(slug)) {
+        return res.status(400).json({ message: 'slug must contain only lowercase letters, numbers, and hyphens' });
+      }
+      const existing = await storage.getDepartmentBySlug(slug);
+      if (existing) {
+        return res.status(409).json({ message: `Slug "${slug}" is already taken` });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: adminEmail,
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+      });
+
+      const dept = await storage.createDepartment({
+        name, slug, description: description || null, adminEmail,
+        stripeAccountId: account.id,
+        chargesEnabled: false, payoutsEnabled: false,
+        applicationFeeAmount: 100,
+        officialTitle: officialTitle || null,
+        departmentStyle: departmentStyle || null,
+        signaturePhrase: signaturePhrase || null,
+        promptAddendum: promptAddendum || null,
+      });
+
+      const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+      const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+
+      const link = await stripe.accountLinks.create({
+        account: account.id,
+        refresh_url: `${baseUrl}/department/onboarding?reauth=1&account=${account.id}`,
+        return_url: `${baseUrl}/department/${slug}/onboarding-complete`,
+        type: 'account_onboarding',
+      });
+
+      console.log(`[Departments] Registered department ${slug} with Stripe account ${account.id}`);
+      res.status(201).json({ onboardingUrl: link.url, slug, id: dept.id });
+    } catch (err: any) {
+      console.error('[Departments] Error registering department:', err.message);
+      res.status(err.statusCode || 500).json({ message: err.message || 'Failed to register department' });
+    }
+  });
+
+  app.get('/api/departments/:slug', async (req, res) => {
+    try {
+      const dept = await storage.getDepartmentBySlug(req.params.slug);
+      if (!dept) return res.status(404).json({ message: 'Department not found' });
+      res.json({ id: dept.id, name: dept.name, slug: dept.slug, description: dept.description, chargesEnabled: dept.chargesEnabled });
+    } catch (err: any) {
+      res.status(500).json({ message: 'Failed to fetch department' });
+    }
+  });
+
+  app.get('/api/departments/:slug/admin', async (req, res) => {
+    try {
+      const dept = await storage.getDepartmentBySlug(req.params.slug);
+      if (!dept) return res.status(404).json({ message: 'Department not found' });
+      const complaints = await storage.getComplaintsByDepartmentId(dept.id);
+      res.json({ ...dept, complaints });
+    } catch (err: any) {
+      res.status(500).json({ message: 'Failed to fetch department admin data' });
+    }
+  });
+
+  app.put('/api/departments/:slug/admin/settings', async (req, res) => {
+    try {
+      const dept = await storage.getDepartmentBySlug(req.params.slug);
+      if (!dept) return res.status(404).json({ message: 'Department not found' });
+      const { officialTitle, departmentStyle, signaturePhrase, promptAddendum, applicationFeeAmount } = req.body;
+      const updates: Record<string, any> = {};
+      if (officialTitle !== undefined) updates.officialTitle = officialTitle;
+      if (departmentStyle !== undefined) updates.departmentStyle = departmentStyle;
+      if (signaturePhrase !== undefined) updates.signaturePhrase = signaturePhrase;
+      if (promptAddendum !== undefined) updates.promptAddendum = promptAddendum;
+      if (applicationFeeAmount !== undefined) updates.applicationFeeAmount = Number(applicationFeeAmount);
+      const updated = await storage.updateDepartment(dept.id, updates);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: 'Failed to update department settings' });
+    }
+  });
+
+  app.get('/api/departments/:slug/admin/onboarding-link', async (req, res) => {
+    try {
+      const dept = await storage.getDepartmentBySlug(req.params.slug);
+      if (!dept) return res.status(404).json({ message: 'Department not found' });
+      if (!dept.stripeAccountId) return res.status(400).json({ message: 'Department has no Stripe account' });
+
+      const stripe = await getUncachableStripeClient();
+
+      if (dept.chargesEnabled) {
+        const loginLink = await stripe.accounts.createLoginLink(dept.stripeAccountId);
+        return res.json({ url: loginLink.url });
+      } else {
+        // Account not fully onboarded — generate fresh onboarding link
+        const frontendUrl = process.env.FRONTEND_URL || (await getParameter('/grievance-portal/frontend/url'));
+        const baseUrl = frontendUrl || `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+        const link = await stripe.accountLinks.create({
+          account: dept.stripeAccountId,
+          refresh_url: `${baseUrl}/department/onboarding?reauth=1&account=${dept.stripeAccountId}`,
+          return_url: `${baseUrl}/department/${dept.slug}/onboarding-complete`,
+          type: 'account_onboarding',
+        });
+        return res.json({ url: link.url });
+      }
+    } catch (err: any) {
+      console.error('[Departments] Error generating onboarding link:', err.message);
+      res.status(err.statusCode || 500).json({ message: err.message || 'Failed to generate onboarding link' });
+    }
+  });
+
   // === Admin Routes ===
 
   app.post('/api/admin/complaints/:id/retry-ai', cognitoAuthMiddleware, async (req, res) => {
@@ -501,16 +649,29 @@ export async function registerRoutes(
 export async function generateBureaucraticResponse(complaintId: number, content: string) {
   console.log(`[AI] Starting analysis for complaint #${complaintId}`);
   const startTime = Date.now();
-  
+
   try {
-    const systemPrompt = `You are a highly bureaucratic government official at the Department of Complaints. 
-Your job is to analyze complaints and provide a response that is polite, formal, extremely verbose, and ultimately non-committal. 
+    const complaint = await storage.getComplaint(complaintId);
+    let departmentContext = '';
+    if (complaint?.departmentId) {
+      const dept = await storage.getDepartmentById(complaint.departmentId);
+      if (dept) {
+        departmentContext = `\nYou are responding specifically on behalf of the ${dept.name}.`;
+        if (dept.officialTitle) departmentContext += ` Responses are signed by the ${dept.officialTitle}.`;
+        if (dept.departmentStyle) departmentContext += ` Your response style: ${dept.departmentStyle}.`;
+        if (dept.signaturePhrase) departmentContext += ` Always include the phrase "${dept.signaturePhrase}" somewhere in your response.`;
+        if (dept.promptAddendum) departmentContext += ` ${dept.promptAddendum}`;
+      }
+    }
+
+    const systemPrompt = `You are a highly bureaucratic government official at the Department of Complaints.
+Your job is to analyze complaints and provide a response that is polite, formal, extremely verbose, and ultimately non-committal.
 Use bureaucratic jargon like "stakeholder alignment," "procedural review," "bandwidth constraints," and "optimization vectors."
 
 You must also assign a "Complexity Score" from 1 to 10 based on how annoying or difficult this complaint seems.
 
-IMPORTANT: When signing the letter, use an officious title but DO NOT use placeholder names like [Your Name]. 
-Either omit the name entirely or use a generic bureaucratic title like "Senior Complaint Analysis Officer" or "Chief Processing Administrator".
+IMPORTANT: When signing the letter, use an officious title but DO NOT use placeholder names like [Your Name].
+Either omit the name entirely or use a generic bureaucratic title like "Senior Complaint Analysis Officer" or "Chief Processing Administrator".${departmentContext}
 
 Return your response in JSON format with two fields:
 - responseText: The bureaucratic letter.

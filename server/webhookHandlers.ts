@@ -136,6 +136,19 @@ export class WebhookHandlers {
         break;
       }
 
+      case 'account.updated': {
+        const account = event.data.object as Stripe.Account;
+        const dept = await storage.getDepartmentByStripeAccountId(account.id);
+        if (dept) {
+          await storage.updateDepartment(dept.id, {
+            chargesEnabled: account.charges_enabled,
+            payoutsEnabled: account.payouts_enabled,
+          });
+          console.log(`[Connect] Department ${dept.slug} charges_enabled: ${account.charges_enabled}`);
+        }
+        break;
+      }
+
       default:
         console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
     }

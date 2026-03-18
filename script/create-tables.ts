@@ -23,6 +23,7 @@ async function createTables() {
   await db.execute(sql`DROP TABLE IF EXISTS subscriptions CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS payments CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS complaints CASCADE`);
+  await db.execute(sql`DROP TABLE IF EXISTS departments CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS admin_users CASCADE`);
   console.log('✓ Old tables dropped\n');
 
@@ -38,6 +39,27 @@ async function createTables() {
   `);
   console.log('✓ admin_users table created');
 
+  // Create departments table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS departments (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      admin_email TEXT NOT NULL,
+      stripe_account_id TEXT,
+      charges_enabled BOOLEAN NOT NULL DEFAULT false,
+      payouts_enabled BOOLEAN NOT NULL DEFAULT false,
+      application_fee_amount INTEGER NOT NULL DEFAULT 100,
+      official_title TEXT,
+      department_style TEXT,
+      signature_phrase TEXT,
+      prompt_addendum TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  console.log('✓ departments table created');
+
   // Create complaints table with INTEGER id (manual management)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS complaints (
@@ -48,6 +70,7 @@ async function createTables() {
       filing_fee INTEGER DEFAULT 500 NOT NULL,
       ai_response TEXT,
       complexity_score INTEGER,
+      department_id INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `);

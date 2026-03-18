@@ -53,6 +53,7 @@ function makeWebhookHandler(secretEnvVar: string) {
 
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), makeWebhookHandler('STRIPE_WEBHOOK_SECRET'));
 app.post('/api/stripe/live-webhook', express.raw({ type: 'application/json' }), makeWebhookHandler('STRIPE_LIVE_WEBHOOK_SECRET'));
+app.post('/api/stripe/connect-webhook', express.raw({ type: 'application/json' }), makeWebhookHandler('STRIPE_CONNECT_WEBHOOK_SECRET'));
 
 app.use(
   express.json({
