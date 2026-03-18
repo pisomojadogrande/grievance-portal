@@ -1,6 +1,6 @@
 import { getDb } from "./db";
-import { complaints, payments, subscriptions, type Complaint, type InsertComplaint, type Payment, type InsertPayment, type Subscription, type InsertSubscription } from "@shared/schema";
-import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
+import { complaints, payments, subscriptions, departments, type Complaint, type InsertComplaint, type Payment, type InsertPayment, type Subscription, type InsertSubscription, type Department, type InsertDepartment } from "@shared/schema";
+import { eq, desc, sql, and, gte, inArray, isNotNull } from "drizzle-orm";
 
 // Generate next ID for a table (DSQL doesn't support auto-increment)
 async function getNextId(tableName: string): Promise<number> {
@@ -30,6 +30,15 @@ export interface IStorage {
   getSubscriptionByStripeId(stripeSubscriptionId: string): Promise<Subscription | undefined>;
   updateSubscriptionByStripeId(stripeSubscriptionId: string, updates: Partial<Subscription>): Promise<Subscription | undefined>;
   countComplaintsInPeriod(email: string, periodStart: Date): Promise<number>;
+
+  // Departments
+  createDepartment(dept: InsertDepartment): Promise<Department>;
+  getDepartmentById(id: number): Promise<Department | undefined>;
+  getDepartmentBySlug(slug: string): Promise<Department | undefined>;
+  getDepartmentByStripeAccountId(accountId: string): Promise<Department | undefined>;
+  updateDepartment(id: number, updates: Partial<Department>): Promise<Department>;
+  getActiveDepartments(): Promise<Department[]>;
+  getComplaintsByDepartmentId(departmentId: number): Promise<Complaint[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -115,7 +124,7 @@ export class DatabaseStorage implements IStorage {
 
   async getDailyComplaintStats(): Promise<{ date: string; count: number }[]> {
     const result = await getDb().execute(sql`
-      SELECT 
+      SELECT
         DATE(created_at) as date,
         COUNT(*)::int as count
       FROM complaints
@@ -124,6 +133,45 @@ export class DatabaseStorage implements IStorage {
       ORDER BY date ASC
     `);
     return result.rows as { date: string; count: number }[];
+  }
+
+  async createDepartment(dept: InsertDepartment): Promise<Department> {
+    const id = await getNextId('departments');
+    const [department] = await getDb().insert(departments).values({ ...dept, id }).returning();
+    return department;
+  }
+
+  async getDepartmentById(id: number): Promise<Department | undefined> {
+    const [dept] = await getDb().select().from(departments).where(eq(departments.id, id));
+    return dept;
+  }
+
+  async getDepartmentBySlug(slug: string): Promise<Department | undefined> {
+    const [dept] = await getDb().select().from(departments).where(eq(departments.slug, slug));
+    return dept;
+  }
+
+  async getDepartmentByStripeAccountId(accountId: string): Promise<Department | undefined> {
+    const [dept] = await getDb().select().from(departments).where(eq(departments.stripeAccountId, accountId));
+    return dept;
+  }
+
+  async updateDepartment(id: number, updates: Partial<Department>): Promise<Department> {
+    const [updated] = await getDb().update(departments)
+      .set(updates)
+      .where(eq(departments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getActiveDepartments(): Promise<Department[]> {
+    return await getDb().select().from(departments).where(isNotNull(departments.stripeAccountId));
+  }
+
+  async getComplaintsByDepartmentId(departmentId: number): Promise<Complaint[]> {
+    return await getDb().select().from(complaints)
+      .where(eq(complaints.departmentId, departmentId))
+      .orderBy(desc(complaints.createdAt));
   }
 }
 

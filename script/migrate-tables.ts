@@ -53,6 +53,36 @@ async function migrate() {
   `);
   console.log('✓ subscriptions table ready');
 
+  // --- complaints: add department_id column ---
+  console.log('Adding department_id column to complaints...');
+  await db.execute(sql`
+    ALTER TABLE complaints
+    ADD COLUMN IF NOT EXISTS department_id INTEGER
+  `);
+  console.log('✓ complaints.department_id ready');
+
+  // --- departments: create table ---
+  console.log('Creating departments table...');
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS departments (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      description TEXT,
+      admin_email TEXT NOT NULL,
+      stripe_account_id TEXT,
+      charges_enabled BOOLEAN NOT NULL DEFAULT false,
+      payouts_enabled BOOLEAN NOT NULL DEFAULT false,
+      application_fee_amount INTEGER NOT NULL DEFAULT 100,
+      official_title TEXT,
+      department_style TEXT,
+      signature_phrase TEXT,
+      prompt_addendum TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  console.log('✓ departments table ready');
+
   console.log('\n✅ All migrations complete!');
 
   await getPool().end();
