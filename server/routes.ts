@@ -175,13 +175,14 @@ export async function registerRoutes(
   });
 
   // === Verify Checkout Session (called from success page) ===
-  // This is the primary source of truth for payment processing
-  // Uses idempotency check to prevent double-processing
-  
+  // Webhook is the primary processor (payment + AI). This endpoint is a status check for the frontend,
+  // plus a fallback payment processor in case the webhook was delayed or failed.
+  // AI is never run here — the frontend polls GET /api/complaints/:id until status reaches 'resolved'.
+
   app.post('/api/stripe/verify-session', async (req, res) => {
     try {
       const { sessionId, complaintId } = req.body;
-      
+
       if (!sessionId || !complaintId) {
         return res.status(400).json({ message: 'Session ID and complaint ID are required' });
       }
@@ -191,51 +192,33 @@ export async function registerRoutes(
         return res.status(404).json({ message: 'Complaint not found' });
       }
 
-      // IDEMPOTENCY CHECK: If already processed, just return success without any changes
+      // Webhook already processed it — just report current status
       if (complaint.status !== 'pending_payment') {
-        return res.json({ 
-          verified: true,
-          status: complaint.status,
-          message: 'Payment already processed'
-        });
+        return res.json({ verified: true, status: complaint.status });
       }
 
+      // Still pending: webhook hasn't fired yet (or failed). Check Stripe directly as a fallback.
       const isLiveSession = sessionId.startsWith('cs_live_');
-      console.log(`[Stripe][${isLiveSession ? 'Live' : 'Test'}] Verifying session ${sessionId} for complaint #${complaintId}`);
       const stripe = isLiveSession ? getLiveStripeClient() : await getUncachableStripeClient();
       const session = await stripe.checkout.sessions.retrieve(sessionId);
 
       if (session.payment_status === 'paid' && session.metadata?.complaintId === String(complaintId)) {
-        // Process the successful payment with complete data
-        const payment = await storage.createPayment({
+        // Process payment only — webhook will handle AI once it fires (Stripe retries for 72h)
+        console.log(`[Stripe][${isLiveSession ? 'Live' : 'Test'}] verify-session fallback: processing payment for complaint #${complaintId}`);
+        await storage.createPayment({
           complaintId: Number(complaintId),
           amount: session.amount_total || 500,
           mode: isLiveSession ? 'live' : 'test',
         });
-
-        // Update payment with transaction details
         await storage.updatePaymentByComplaintId(Number(complaintId), {
           status: 'succeeded',
           transactionId: (session.payment_intent as string) || session.id,
         });
-
         await storage.updateComplaint(Number(complaintId), { status: 'received' });
-
-        // Run AI analysis synchronously - Lambda freezes after response, so fire-and-forget doesn't work
-        await generateBureaucraticResponse(Number(complaintId), complaint.content);
-
-        return res.json({
-          verified: true,
-          status: 'resolved',
-          message: 'Payment verified successfully'
-        });
+        return res.json({ verified: true, status: 'received' });
       }
 
-      return res.json({ 
-        verified: false,
-        status: session.payment_status,
-        message: 'Payment not yet completed'
-      });
+      return res.json({ verified: false, status: complaint.status });
 
     } catch (err: any) {
       console.error('Error verifying session:', {
@@ -568,6 +551,21 @@ export async function registerRoutes(
   });
 
   // === Admin Routes ===
+
+  app.post('/api/admin/complaints/:id/retry-ai', cognitoAuthMiddleware, async (req, res) => {
+    try {
+      const complaint = await storage.getComplaint(Number(req.params.id));
+      if (!complaint) return res.status(404).json({ message: 'Complaint not found' });
+      if (complaint.status === 'pending_payment') return res.status(400).json({ message: 'Payment not yet received' });
+      if (complaint.status === 'resolved') return res.status(400).json({ message: 'Already resolved' });
+
+      await generateBureaucraticResponse(complaint.id, complaint.content);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error(`[Admin] Error retrying AI for complaint #${req.params.id}:`, err.message);
+      res.status(500).json({ message: err.message || 'Failed to retry AI generation' });
+    }
+  });
 
   app.get('/api/admin/complaints', cognitoAuthMiddleware, async (req, res) => {
     try {

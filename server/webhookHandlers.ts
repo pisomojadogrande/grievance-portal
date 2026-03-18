@@ -93,9 +93,9 @@ export class WebhookHandlers {
 
           await storage.updateComplaint(parseInt(complaintId), { status: 'received' });
 
-          // Trigger AI analysis
+          // Trigger AI analysis — must be awaited: Lambda freezes on HTTP response, fire-and-forget won't complete
           const { generateBureaucraticResponse } = await import('./routes');
-          generateBureaucraticResponse(complaint.id, complaint.content).catch(console.error);
+          await generateBureaucraticResponse(complaint.id, complaint.content);
 
           console.log(`[Stripe Webhook] Successfully processed payment for complaint #${complaintId}`);
         }

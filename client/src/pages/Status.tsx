@@ -63,6 +63,13 @@ export default function Status() {
     }
   }, [id, refetch, toast]);
 
+  // Poll while the webhook is processing payment + AI response
+  useEffect(() => {
+    if (complaint?.status !== 'received' && complaint?.status !== 'processing') return;
+    const interval = setInterval(() => { refetch(); }, 2000);
+    return () => clearInterval(interval);
+  }, [complaint?.status, refetch]);
+
   useEffect(() => {
     if (complaint && complaint.status !== 'pending_payment') {
       fetch(apiUrl(`/api/complaints/${id}/payment`))
