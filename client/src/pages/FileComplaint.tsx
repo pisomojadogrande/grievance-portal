@@ -9,7 +9,7 @@ import { insertComplaintSchema, type InsertComplaint } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useLocation } from "wouter";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { motion } from "framer-motion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useState, useCallback, useEffect } from "react";
@@ -40,6 +40,7 @@ export default function FileComplaint() {
   const [subStatus, setSubStatus] = useState<SubscriptionStatus | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null);
+  const [routingExpanded, setRoutingExpanded] = useState(false);
 
   useEffect(() => {
     fetch(apiUrl('/api/departments'))
@@ -141,34 +142,52 @@ export default function FileComplaint() {
                 />
 
                 {departments.length > 0 && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none">Complaint Domain Expertise</label>
-                    <p className="text-xs text-muted-foreground">Route your grievance to the appropriate jurisdictional authority, or file as a general matter.</p>
-                    <div className="grid gap-2 mt-1">
-                      <div
-                        className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${selectedDepartmentId === null ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50'}`}
-                        onClick={() => setSelectedDepartmentId(null)}
-                      >
-                        <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${selectedDepartmentId === null ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
-                        <div>
-                          <div className="text-sm font-medium">None — General Grievance Filing</div>
-                          <div className="text-xs text-muted-foreground">Standard platform processing</div>
+                  <div className="border border-border rounded-md overflow-hidden">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                      onClick={() => setRoutingExpanded(e => !e)}
+                    >
+                      <div>
+                        <div className="text-sm font-medium flex items-center gap-2">
+                          Premium Grievance Routing
+                          {selectedDepartmentId !== null && (
+                            <span className="text-xs font-normal bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                              {departments.find(d => d.id === selectedDepartmentId)?.name}
+                            </span>
+                          )}
                         </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Participating departments have been certified by the Bureau to receive complaints within their designated area of expertise. Standard filing fee applies.</div>
                       </div>
-                      {departments.map(dept => (
+                      {routingExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0 ml-3" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 ml-3" />}
+                    </button>
+                    {routingExpanded && (
+                      <div className="p-3 grid gap-2 border-t border-border">
                         <div
-                          key={dept.id}
-                          className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${selectedDepartmentId === dept.id ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50'}`}
-                          onClick={() => setSelectedDepartmentId(dept.id)}
+                          className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${selectedDepartmentId === null ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50'}`}
+                          onClick={() => setSelectedDepartmentId(null)}
                         >
-                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${selectedDepartmentId === dept.id ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
+                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${selectedDepartmentId === null ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
                           <div>
-                            <div className="text-sm font-medium">{dept.name}</div>
-                            {dept.description && <div className="text-xs text-muted-foreground">{dept.description}</div>}
+                            <div className="text-sm font-medium">None — General Grievance Filing</div>
+                            <div className="text-xs text-muted-foreground">Standard platform processing</div>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                        {departments.map(dept => (
+                          <div
+                            key={dept.id}
+                            className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${selectedDepartmentId === dept.id ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50'}`}
+                            onClick={() => setSelectedDepartmentId(dept.id)}
+                          >
+                            <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${selectedDepartmentId === dept.id ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
+                            <div>
+                              <div className="text-sm font-medium">{dept.name}</div>
+                              {dept.description && <div className="text-xs text-muted-foreground">{dept.description}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

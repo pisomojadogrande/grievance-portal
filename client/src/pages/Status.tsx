@@ -21,6 +21,7 @@ export default function Status() {
   const { toast } = useToast();
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  const [departmentName, setDepartmentName] = useState<string | null>(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -69,6 +70,18 @@ export default function Status() {
     const interval = setInterval(() => { refetch(); }, 2000);
     return () => clearInterval(interval);
   }, [complaint?.status, refetch]);
+
+  useEffect(() => {
+    if (complaint?.departmentId) {
+      fetch(apiUrl('/api/departments'))
+        .then(r => r.ok ? r.json() : [])
+        .then((depts: { id: number; name: string }[]) => {
+          const dept = depts.find(d => d.id === complaint.departmentId);
+          if (dept) setDepartmentName(dept.name);
+        })
+        .catch(() => {});
+    }
+  }, [complaint?.departmentId]);
 
   useEffect(() => {
     if (complaint && complaint.status !== 'pending_payment') {
@@ -180,6 +193,12 @@ export default function Status() {
                 <div>
                   <h4 className="text-xs font-bold uppercase text-muted-foreground mb-2">Case Metadata</h4>
                   <dl className="space-y-2 text-sm">
+                    {departmentName && (
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-muted-foreground">Routed To</dt>
+                        <dd className="font-mono text-right max-w-[160px] leading-tight">{departmentName}</dd>
+                      </div>
+                    )}
                     <div className="flex justify-between gap-2">
                       <dt className="text-muted-foreground">Complexity Score</dt>
                       <dd className="font-mono font-bold">
