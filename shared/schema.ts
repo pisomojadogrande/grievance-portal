@@ -44,26 +44,6 @@ export const resetAdminPasswordSchema = z.object({
 export type ResetAdminPasswordRequest = z.infer<typeof resetAdminPasswordSchema>;
 
 // === TABLE DEFINITIONS ===
-export const departments = pgTable('departments', {
-  id: integer('id').primaryKey(),
-  name: text('name').notNull(),
-  slug: text('slug').notNull(),
-  description: text('description'),
-  adminEmail: text('admin_email').notNull(),
-  stripeAccountId: text('stripe_account_id'),
-  chargesEnabled: boolean('charges_enabled').default(false).notNull(),
-  payoutsEnabled: boolean('payouts_enabled').default(false).notNull(),
-  applicationFeeAmount: integer('application_fee_amount').default(100).notNull(), // cents
-  officialTitle: text('official_title'),
-  departmentStyle: text('department_style'),
-  signaturePhrase: text('signature_phrase'),
-  promptAddendum: text('prompt_addendum'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-export type Department = typeof departments.$inferSelect;
-export type InsertDepartment = Omit<Department, 'id' | 'createdAt'>;
-
 export const complaints = pgTable("complaints", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
@@ -72,7 +52,6 @@ export const complaints = pgTable("complaints", {
   filingFee: integer("filing_fee").default(500).notNull(), // in cents, default $5.00
   aiResponse: text("ai_response"),
   complexityScore: integer("complexity_score"),
-  departmentId: integer("department_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -87,17 +66,16 @@ export const payments = pgTable("payments", {
 });
 
 // === SCHEMAS ===
-export const insertComplaintSchema = createInsertSchema(complaints).omit({
-  id: true,
-  status: true,
-  filingFee: true,
-  aiResponse: true,
-  complexityScore: true,
-  createdAt: true
+export const insertComplaintSchema = createInsertSchema(complaints).omit({ 
+  id: true, 
+  status: true, 
+  filingFee: true, 
+  aiResponse: true, 
+  complexityScore: true, 
+  createdAt: true 
 }).extend({
   content: z.string().min(10, "Complaint must be at least 10 characters long. We need details."),
   customerEmail: z.string().email("Please provide a valid email for official correspondence."),
-  departmentId: z.number().int().positive().optional().nullable(),
 });
 
 export const insertPaymentSchema = createInsertSchema(payments).omit({

@@ -17,7 +17,6 @@ process.env.STRIPE_PRICE_REGISTERED_COMPLAINANT = 'price_mock_registered';
 process.env.STRIPE_PRICE_PRO_COMPLAINANT = 'price_mock_pro';
 process.env.STRIPE_LIVE_PRICE_REGISTERED_COMPLAINANT = 'price_live_mock_registered';
 process.env.STRIPE_LIVE_PRICE_PRO_COMPLAINANT = 'price_live_mock_pro';
-process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_mock';
 process.env.SESSION_SECRET = 'test-session-secret';
 
 // Load the handler

@@ -107,14 +107,6 @@ export default function Home() {
                 Subscribe
               </Button>
             </div>
-            <div className="text-center sm:text-left">
-              <button
-                onClick={() => setLocation("/department/register")}
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-              >
-                Register a Complaint Domain →
-              </button>
-            </div>
             <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-lg border border-border/50 text-sm font-mono text-muted-foreground w-fit">
               <span>Filing Fee:</span>
               <span className="font-bold text-foreground">$5.00</span>

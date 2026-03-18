@@ -12,15 +12,8 @@ import { useLocation } from "wouter";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { apiUrl } from "@/config";
-
-interface Department {
-  id: number;
-  name: string;
-  slug: string;
-  description: string | null;
-}
 
 interface SubscriptionStatus {
   active: boolean;
@@ -38,15 +31,6 @@ export default function FileComplaint() {
   const [, setLocation] = useLocation();
   const mutation = useCreateComplaint();
   const [subStatus, setSubStatus] = useState<SubscriptionStatus | null>(null);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null);
-
-  useEffect(() => {
-    fetch(apiUrl('/api/departments'))
-      .then(r => r.ok ? r.json() : [])
-      .then(setDepartments)
-      .catch(() => setDepartments([]));
-  }, []);
 
   const hasAllowanceRemaining = subStatus?.active && (
     subStatus.complaintsAllowed === null ||
@@ -72,12 +56,11 @@ export default function FileComplaint() {
     defaultValues: {
       customerEmail: "",
       content: "",
-      departmentId: null,
     },
   });
 
   const onSubmit = (data: InsertComplaint) => {
-    mutation.mutate({ ...data, departmentId: selectedDepartmentId }, {
+    mutation.mutate(data, {
       onSuccess: (complaint) => {
         setLocation(`/payment/${complaint.id}`);
       },
@@ -139,38 +122,6 @@ export default function FileComplaint() {
                     </FormItem>
                   )}
                 />
-
-                {departments.length > 0 && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none">Complaint Domain Expertise</label>
-                    <p className="text-xs text-muted-foreground">Route your grievance to the appropriate jurisdictional authority, or file as a general matter.</p>
-                    <div className="grid gap-2 mt-1">
-                      <div
-                        className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${selectedDepartmentId === null ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50'}`}
-                        onClick={() => setSelectedDepartmentId(null)}
-                      >
-                        <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${selectedDepartmentId === null ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
-                        <div>
-                          <div className="text-sm font-medium">None — General Grievance Filing</div>
-                          <div className="text-xs text-muted-foreground">Standard platform processing</div>
-                        </div>
-                      </div>
-                      {departments.map(dept => (
-                        <div
-                          key={dept.id}
-                          className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${selectedDepartmentId === dept.id ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/50'}`}
-                          onClick={() => setSelectedDepartmentId(dept.id)}
-                        >
-                          <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${selectedDepartmentId === dept.id ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
-                          <div>
-                            <div className="text-sm font-medium">{dept.name}</div>
-                            {dept.description && <div className="text-xs text-muted-foreground">{dept.description}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 <FormField
                   control={form.control}

@@ -10,9 +10,6 @@ import Status from "@/pages/Status";
 import Admin from "@/pages/Admin";
 import Subscribe from "@/pages/Subscribe";
 import SubscriptionConfirmation from "@/pages/SubscriptionConfirmation";
-import DepartmentRegister from "@/pages/DepartmentRegister";
-import DepartmentAdmin from "@/pages/DepartmentAdmin";
-import DepartmentOnboardingComplete from "@/pages/DepartmentOnboardingComplete";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -25,10 +22,6 @@ function Router() {
       <Route path="/admin" component={Admin} />
       <Route path="/subscribe" component={Subscribe} />
       <Route path="/subscription/confirmation" component={SubscriptionConfirmation} />
-      <Route path="/department/register" component={DepartmentRegister} />
-      <Route path="/department/onboarding" component={DepartmentOnboardingComplete} />
-      <Route path="/department/:slug/admin" component={DepartmentAdmin} />
-      <Route path="/department/:slug/onboarding-complete" component={DepartmentOnboardingComplete} />
       <Route component={NotFound} />
     </Switch>
   );
