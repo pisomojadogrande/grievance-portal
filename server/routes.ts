@@ -18,10 +18,12 @@ const isAuthenticated = (req: any, res: any, next: any) => {
 
 // Shared helper: validates the complaint, creates an embedded Stripe checkout session, returns clientSecret.
 // Pass amount=null to use complaint.filingFee (test mode); pass an explicit cent value for live mode.
+// Pass routeDepartment=false to suppress Connect destination routing (required for live mode, since
+// department Stripe accounts are test-mode only and don't exist in the live Stripe environment).
 async function createEmbeddedCheckoutSession(
   stripe: Awaited<ReturnType<typeof import('./stripeClient').getUncachableStripeClient>>,
   complaintId: number | undefined,
-  { amount, productName, label }: { amount: number | null; productName: string; label: string }
+  { amount, productName, label, routeDepartment = true }: { amount: number | null; productName: string; label: string; routeDepartment?: boolean }
 ): Promise<string> {
   if (!complaintId) throw Object.assign(new Error('Complaint ID is required'), { statusCode: 400 });
 
@@ -38,7 +40,7 @@ async function createEmbeddedCheckoutSession(
   console.log(`[Stripe][${label}] Creating checkout session for complaint #${complaintId}, amount: ${unitAmount} cents`);
 
   let paymentIntentData: Record<string, any> | undefined;
-  if (complaint.departmentId) {
+  if (routeDepartment && complaint.departmentId) {
     const dept = await storage.getDepartmentById(complaint.departmentId);
     if (dept?.stripeAccountId && dept.chargesEnabled) {
       paymentIntentData = {
@@ -158,6 +160,7 @@ export async function registerRoutes(
         amount: 50, // $0.50
         productName: 'Complaint Filing Fee (Real)',
         label: 'Live',
+        routeDepartment: false, // department accounts are test-mode only; can't use as live destinations
       });
       res.json({ clientSecret });
     } catch (err: any) {

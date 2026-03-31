@@ -337,6 +337,22 @@ export default function Payment() {
                 </div>
               </div>
 
+              {complaint.departmentId && (
+                <div className="bg-muted/50 p-4 rounded-lg border border-border flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-sm text-foreground">Jurisdictional Routing Advisory — Form 14-C</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Pursuant to Inter-Departmental Directive 7(b), specialist domain routing is available exclusively
+                      under the Simulated Remittance Protocol (test mode). Should you elect to proceed with a real
+                      payment, your grievance will be escalated to our General Complaint Processing Bureau — staffed
+                      by highly credentialed administrators who are, in all material respects, indistinguishable from
+                      their domain-specific counterparts and equally committed to not resolving your issue.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <CheckoutSection
                 banner={null}
                 buttonLabel="Pay $0.50 - Real Payment"
