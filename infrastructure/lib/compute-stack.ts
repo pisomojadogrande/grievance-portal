@@ -13,9 +13,13 @@ export class ComputeStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // CloudFront URL for CORS - use context or allow all origins initially
-    // After first deploy, set via: cdk deploy -c frontendUrl=https://xxx.cloudfront.net
-    const frontendUrl = this.node.tryGetContext('frontendUrl') || '*';
+    // Frontend URL for CORS. Resolution order:
+    //   1. CDK context: cdk deploy -c frontendUrl=https://...
+    //   2. CUSTOM_DOMAIN env var (same one used by deploy:frontend)
+    //   3. '*' fallback (breaks credentialed requests — avoid in production)
+    const frontendUrl = this.node.tryGetContext('frontendUrl')
+      || (process.env.CUSTOM_DOMAIN ? `https://${process.env.CUSTOM_DOMAIN}` : null)
+      || '*';
 
     // Lambda function
     this.lambdaFunction = new lambda.Function(this, 'GrievancePortalFunction', {
