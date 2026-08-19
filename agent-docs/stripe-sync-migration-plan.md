@@ -101,12 +101,62 @@ generates columns as `GENERATED ALWAYS AS (_raw_data ->> 'subscription')`. The
 top-level key is gone. **Verified:**
 
 - `JOIN invoices i ON i.subscription = s.id` → **0 rows.** No error, no warning.
-- `JOIN invoices i ON i.id = s.latest_invoice` → **7/7 resolve.**
+- `_raw_data -> 'parent' -> 'subscription_details' ->> 'subscription'` → populated
+  on 8 of 9 invoices. The exception is a `draft` invoice whose `parent` is `null`
+  entirely, so absence means "not a subscription invoice yet," not an error.
 
 Worst failure shape a database can have: plausible name, valid query, empty result
-that reads as "customer has no invoices." **Always navigate
-`subscriptions.latest_invoice → invoices.id`.** Report to the sync team as preview
+that reads as "customer has no invoices." Report to the sync team as preview
 feedback.
+
+**Two different questions, two different routes — do not conflate them:**
+
+| Question | Route |
+|---|---|
+| "What's the state of this subscription's *current* bill?" | `subscriptions.latest_invoice → invoices.id` |
+| "Show me *all* invoices for this subscription" | the nested `parent` path above |
+| anything at all | **never** the `subscription` column |
+
+An earlier draft of this plan said "always navigate `latest_invoice → invoices.id`,"
+which is wrong as general guidance. `latest_invoice` points at exactly one row, so
+it silently drops history: verified in the sandbox, `sub_1Too15…` has two invoices
+(an original and a renewal) and the `latest_invoice` join returns only the newer
+one. It is the right route for `getDunningInfo`, which genuinely wants only the
+current bill — and the wrong route for anything else.
+
+---
+
+## Audit: every Stripe API call in the codebase
+
+The handler walkthrough covered reads of *our DSQL mirror*. This is the separate
+question — reads that go to the **Stripe API** and could go to the synced database
+instead. Swept with `rg` over `server/`, `client/`, `script/`. Eleven calls total,
+of which only **three are reads**:
+
+| Location | Call | Disposition |
+|---|---|---|
+| `routes.ts:206` | `checkout.sessions.retrieve` | replaced by the synced read in `confirm-payment` (Step 3) |
+| `routes.ts:500` | `accounts.retrieve` | block deleted outright (Step 4) |
+| `webhookHandlers.ts:40` | `subscriptions.retrieve` | tagged `SYNC-DEPRECATED`; dies with its branch (Step 6) |
+
+The other eight are `create` calls — `checkout.sessions.create` ×3,
+`accountLinks.create` ×2, `accounts.create`, `billingPortal.sessions.create`,
+`accounts.createLoginLink` — plus `webhooks.constructEvent`, which is local
+signature verification and not an API call at all.
+
+**Those eight stay on the Stripe API permanently, and that bounds the whole
+exercise: the sync replaces reads, never actions.** You cannot create a checkout
+session, mint an onboarding link, or open a billing portal by reading a database.
+This is the same mirror-vs-trigger boundary the handler walkthrough found, seen
+from the other side — and worth stating in the demo, because "replace your webhooks
+with a database" invites the misreading that Stripe's API stops mattering.
+
+**Replacing an API read with a synced read always adds a lag exposure that was not
+there before**, because the Stripe API answers from the truth while the sync answers
+from a copy that is behind. Each of the three above was checked for this; see the
+timing table in Step 4. Note `webhookHandlers.ts:40` is deliberately *not* repointed
+at the sync — inside a webhook the synced row is the least likely thing to have
+landed, so the API call stays until the whole branch is deleted.
 
 ---
 
@@ -248,6 +298,39 @@ No sync query. Worst case is Bedrock's own latency.
 Errors from either call return to the browser and are **shown to the user** —
 strictly better than today, where webhook failures die in CloudWatch.
 
+#### The subscription path takes the same shape
+
+A complaint can become eligible for a letter two ways: the filer paid $5, or they
+spent a membership allowance. **Only the first half differs.** Both converge on the
+*same* call 2:
+
+| | Paid $5 | Used membership |
+|---|---|---|
+| Call 1 | `confirm-payment` — wait for the synced checkout session | `claim-allowance` — wait for the synced subscription, check tier + allowance |
+| | → set `received` | → set `received` |
+| Call 2 | `generate` | **the same `generate`** |
+
+So `POST /api/subscriptions/use-complaint` (`routes.ts:369-395`) splits: the
+lookup/allowance/`received` part becomes call 1, and its `generateBureaucraticResponse`
+call at line 388 is deleted in favour of the shared `generate`. Net effect is *less*
+code than today, because letter generation currently exists in two places (this
+route and the webhook) and ends up in one.
+
+**Why the split is mandatory here, not cosmetic.** `use-complaint` today does the
+subscription lookup *and* Bedrock in a single request. Repointing the lookup at the
+sync adds a bounded wait, which would put a database wait and Bedrock in one API
+Gateway call — the stacking that must never happen. Splitting is the only way to
+migrate this read at all.
+
+🐛 **And it closes a money bug.** Line 379-380 returns `403 No active subscription`
+when the lookup finds nothing. Against the sync, "not found" during the lag window
+is indistinguishable from "never existed," so a member who *just* subscribed gets
+refused and falls through to the $5 path — **paying twice.** The trigger is one
+click, not a corner case: `SubscriptionConfirmation.tsx:105` puts a "File a
+Complaint" button directly on the post-subscribe confirmation page. This is the
+sharpest illustration in the codebase of why lag must read as "not yet" and never
+as "no."
+
 - **`verify-session` loses its write path entirely** (`routes.ts:211-219`
   removed, not tagged). This is the bug fix.
 - **Abandoned tab:** if the user closes it after call 1, the complaint waits at
@@ -263,14 +346,27 @@ strictly better than today, where webhook failures die in CloudWatch.
 |---|---|
 | `GET /api/complaints/:id/payment` (`routes.ts:174-178`) | `getPaymentForComplaint`. **Post-checkout path** (`Status.tsx:86-93` fires it as soon as status leaves `pending_payment`) → needs the bounded wait. |
 | `/api/subscriptions/status` | `getActiveSubscriptionByEmail` + `getDunningInfo` |
-| `/api/subscriptions/use-complaint` | `getActiveSubscriptionByEmail` |
+| `/api/subscriptions/use-complaint` | `getActiveSubscriptionByEmail` **with the bounded wait** — split into `claim-allowance` + shared `generate`, see Step 3 |
 | `/api/subscriptions/customer-portal` | `getActiveSubscriptionByEmail` (needs `customer` id) |
 | `routes.ts:45` Connect routing gate | `getAccount(...).charges_enabled` |
 | `routes.ts:554` login vs onboarding link | `getAccount(...)` |
 | `GET /api/departments/:slug` | `getAccount(...)` — **delete the reconciliation block at `routes.ts:495-509` entirely** |
 
-The three subscription routes are *not* post-checkout (minutes-to-weeks later), so
-they read once with **no retry**.
+**Which reads need the bounded wait, and why it's not "all the subscription ones."**
+The test is not *what* the read is but *how soon after the user acted* it can fire.
+
+| Read | Soonest it can fire after the user's action | Wait? |
+|---|---|---|
+| `confirm-payment` | milliseconds (Stripe redirects instantly) | **yes** |
+| `GET /:id/payment` | milliseconds (`Status.tsx:86-93` fires as soon as status leaves `pending_payment`) | **yes** |
+| `claim-allowance` | ~1 second (one click from the confirmation page) | **yes** |
+| `/subscriptions/status` | minutes — user navigates there deliberately | no |
+| `/subscriptions/customer-portal` | minutes — same | no |
+| department / account reads | seconds, but a stale `false` is merely cosmetic and self-corrects on refresh | no (user's call) |
+
+An earlier draft asserted all three subscription routes were "minutes-to-weeks
+later, so no retry." That was right for two of them and wrong for `use-complaint`,
+which is reachable one click after subscribing.
 
 **Deleting `routes.ts:495-509`** removes a Stripe API call *and* a DB write from an
 ordinary page-view path. That block's own comment ("in case we missed a webhook")
@@ -297,6 +393,14 @@ schema that quietly captures less than the truth.
    confirmation. **On timeout: reassure without blocking** — "Your payment
    succeeded; your membership is being registered" + manual refresh. Never a
    false success, never a stranded spinner.
+
+   **Also gate the "File a Complaint" button** (line 105) on that poll having
+   succeeded — belt-and-braces for the double-charge bug in Step 3. The split into
+   `claim-allowance` is the actual fix, since it covers someone who reaches
+   `/file-complaint` by any other route; this just stops the fast-clicker from
+   reaching the bad case at all. Keep it disabled during the timeout/reassurance
+   state too — that state means "we still can't see your membership," which is
+   exactly when the button must not be live.
 2. **Pending cancellation.** `/api/subscriptions/status` returns
    `cancelAtPeriodEnd` / `cancelAt`; UI shows "set to end on <date>". Today the
    app is blind to this for up to a month — and with
@@ -364,6 +468,11 @@ above — **no deploy, no network, no live DB**:
 - `Status.tsx` resume table: each status → correct action
 - dunning read navigates `latest_invoice`, and a regression test asserting the
   `invoices.subscription` join is *not* used
+- **the double-charge regression:** `claim-allowance` against a sync fixture where
+  the subscription row is absent on the first read and present on the second must
+  succeed, *not* return 403. This is the test that would have caught the money bug.
+- `claim-allowance` and `confirm-payment` both leave the complaint at `received`,
+  so the shared `generate` behaves identically whichever produced it
 - `past_due` / `cancel_at_period_end` status mapping
 
 Also add `SUPABASE_URL_SBX` (pointing at `localhost:15432`) to
@@ -380,10 +489,10 @@ AWS reaches the Supabase pooler directly.
 | `server/stripeSync.ts` | **new** — all Supabase reads, raw SQL, Drizzle rationale in header |
 | `server/storage.ts` | subscription/payment read methods delegate to `stripeSync`; writes stay, tagged |
 | `server/webhookHandlers.ts` | tag mirror writes; payment branch stops driving the flow and stops generating AI |
-| `server/routes.ts` | new `confirm-payment` / `generate` endpoints; strip `verify-session` writes; delete `495-509`; repoint reads |
+| `server/routes.ts` | new `confirm-payment` / `claim-allowance` / `generate` endpoints; strip `verify-session` writes; drop the duplicate `generateBureaucraticResponse` at line 388; delete `495-509`; repoint reads |
 | `server/init.ts` | map the two Supabase SSM params |
 | `client/src/pages/Status.tsx` | resume-table logic, error surfacing |
-| `client/src/pages/SubscriptionConfirmation.tsx` | real verification + waiting affordance |
+| `client/src/pages/SubscriptionConfirmation.tsx` | real verification + waiting affordance; gate the "File a Complaint" button on the poll |
 | `client/src/pages/DepartmentOnboardingComplete.tsx` | `details_submitted` states |
 | `infrastructure/lib/compute-stack.ts` | env vars + SSM read permission |
 | `script/sync-reconcile.ts` | **new** — offline comparison |
@@ -408,6 +517,11 @@ for the human to run. Never commit AWS account IDs or the Supabase URL.
      webhook endpoint entirely and confirm it *still works* — the headline result.
    - Reload `/status/:id` mid-flow at each status; confirm correct resume.
    - **Subscribe:** confirmation page shows the waiting state then confirms.
+   - **The double-charge case, deliberately raced:** subscribe, then click "File a
+     Complaint" the instant the button becomes live and file immediately. The
+     complaint must consume the membership allowance and must *never* present a $5
+     checkout. Worth doing more than once — it's a timing bug, so a single pass
+     proving nothing is the trap.
    - Cancel via portal → "set to end on <date>" appears while access continues.
    - Register a department, complete onboarding → correct `details_submitted`
      copy, no reconciliation API call in logs.
