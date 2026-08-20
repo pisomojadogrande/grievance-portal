@@ -36,6 +36,55 @@ Migration is deliberately **two-phase**:
 - **Phase 2 (later):** delete marked writes, the DSQL `subscriptions` table, and
   handlers that exist only to feed it.
 
+## Implementation progress
+
+Last updated: 2026-08-20 UTC.
+
+- **Step 0 — complete.** The corrected plan was committed in `2f40e41`; the
+  follow-up API-read audit and double-charge analysis were committed in
+  `8edfa49`. The checked-in plan matches the working tree, and the credential
+  scan found no connection string, credential, or AWS account ID.
+- **Step 1 — complete and deployed.** Dependencies are installed, `server/supabaseDb.ts`
+  now lazily creates separate sandbox/live pools, and `server/init.ts` maps both
+  SSM values into the expected environment variables. The existing Lambda SSM
+  policy already covers `/grievance-portal/supabase/*` and now documents that
+  fact. `npm run check`, `npm run build`, the infrastructure TypeScript build,
+  and all 3 infrastructure tests pass; a direct `SELECT 1` through the socat
+  tunnel also verified the sandbox pool and lazy pool reuse. The live connection
+  cannot be checked locally because `SUPABASE_URL_LIVE` is not present in this
+  environment, but the missing-value guard was verified. The added content
+  passed the credential and AWS-account-ID scan. The implementation and this
+  progress record are kept together in one Step 1 checkpoint. The first human
+  deployment attempt hung after bootstrapping; the
+  cause was not established, and the proposed proxy/region workaround was not
+  correct. Starting a fresh shell made CDK run normally, but it targeted
+  `us-west-2` and created new Parameters, Database, Auth, and Compute stacks
+  there; it did not update the existing main stacks in `us-east-1`. Both sync URL
+  parameters are confirmed present in `us-east-1`. A subsequent main-region CDK
+  diff is correct: Parameters, Database, and Auth have no changes, and Compute
+  changes only the Lambda code asset. The human deployed that update successfully;
+  CloudFormation is `UPDATE_COMPLETE`, Lambda reports a successful update, and
+  the API Gateway `/api/health` check passes. The custom hostname's `/api/health`
+  path serves the frontend HTML (the client uses its injected API Gateway URL),
+  so it is not the API health-check route. The browser smoke test confirms the
+  site loads, but one complaint remains indefinitely at "Bureaucratic Review in
+  Progress"; diagnosis is intentionally deferred until cleanup finishes. The
+  accidental west-region inventory contains four application stacks, one
+  retained Cognito pool, and the accidental CDK bootstrap stack/bucket, with no
+  DSQL cluster. The user deleted those stacks, pool, and bucket; read-only checks
+  confirm they are gone, with only two empty Lambda log groups left to delete.
+  The `complaints-ro` trace for complaint 77 confirms the known Step 3 race:
+  `verify-session` set the complaint to `received` at 22:48:20.588Z, the checkout
+  webhook arrived at 22:48:21.061Z, saw `received`, and skipped at 22:48:21.069Z.
+  No AI/Bedrock attempt occurred; the current row is still `received` with no AI
+  response or complexity score. Step 1 itself is deployed and its connection
+  work is sound; this smoke test reproduced the pre-existing bug Step 3 is
+  designed to remove.
+- **Steps 2–8 — not started.**
+
+The plan is the implementation ledger: update this section as work is completed,
+verified, committed, deployed by the user, and manually tested.
+
 ### The sharpened claim (emerged from the handler walkthrough)
 
 > The sync eliminates webhooks whose job is to **maintain a copy of Stripe's

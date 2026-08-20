@@ -27,6 +27,8 @@ export async function initializeApp() {
     process.env.STRIPE_LIVE_PRICE_PRO_COMPLAINANT = params['stripe/live-price-pro-complainant'];
     process.env.STRIPE_LIVE_WEBHOOK_SECRET = params['stripe/live-webhook-secret'];
     process.env.STRIPE_CONNECT_WEBHOOK_SECRET = params['stripe/connect-webhook-secret'];
+    process.env.SUPABASE_URL_SBX = params['supabase/url-sbx'];
+    process.env.SUPABASE_URL_LIVE = params['supabase/url-live'];
   }
   
   initialized = true;

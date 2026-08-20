@@ -38,7 +38,8 @@ export class ComputeStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
-    // Grant SSM Parameter Store access
+    // Grant access to all application parameters, including the sandbox and
+    // live Stripe-sync database URLs under /grievance-portal/supabase/.
     this.lambdaFunction.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParametersByPath'],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/grievance-portal/*`],
