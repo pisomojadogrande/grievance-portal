@@ -80,7 +80,24 @@ Last updated: 2026-08-20 UTC.
   response or complexity score. Step 1 itself is deployed and its connection
   work is sound; this smoke test reproduced the pre-existing bug Step 3 is
   designed to remove.
-- **Steps 2–8 — not started.**
+- **Step 2 — in progress.** The schema and JSON paths were revalidated against
+  the live sandbox data, and `server/stripeSync.ts` now implements all planned
+  parameterized reads plus bounded checkout-session polling. Initial sandbox
+  checks pass for checkout/payment mapping, highest-tier duplicate-email
+  selection, session-to-subscription lookup, current-invoice dunning lookup,
+  accounts, abandoned-checkout counting, and missing rows. The newly discovered
+  paid-session/payment-intent status mismatch is documented without a workaround.
+  The user corrected `/grievance-portal/supabase/url-live`; authentication and a
+  read-only query now succeed. The live schema has `accounts`, `customers`,
+  `invoices`, `payment_intents`, and `subscriptions`, but is missing
+  `checkout_sessions` entirely, so three live-mode query paths cannot yet work
+  and the preview configuration/schema needs repair. `npm run check`, `npm run
+  build`, the infrastructure build, all
+  3 infrastructure tests, `git diff --check`, and the credential/account-ID scan
+  pass. The local implementation and progress record are committed together in
+  the Step 2 checkpoint; human deployment and regression smoke testing are
+  pending. No application route switches data sources in this step.
+- **Steps 3–8 — not started.**
 
 The plan is the implementation ledger: update this section as work is completed,
 verified, committed, deployed by the user, and manually tested.
@@ -141,6 +158,14 @@ Connected via socat tunnel: `localhost:15432` →
   subscriptions. Lookups by email must resolve the ambiguity deliberately.
 - Subscriptions carry `cancel_at_period_end`, `cancel_at`, `canceled_at`,
   `cancellation_details`, `ended_at` — none of which DSQL mirrors.
+- **Paid-session status mismatch discovered during Step 2:** complaints 77 and
+  78 both have `checkout_sessions.payment_status = 'paid'` and a paid,
+  `succeeded` charge, but their synced `payment_intents.status` is
+  `requires_payment_method`; a direct Stripe API read confirms the real Payment
+  Intent status is `succeeded`. Older synced rows usually agree (87
+  paid/succeeded versus 2 mismatches). This is a preview sync bug and must remain
+  visible: `getPaymentForComplaint` returns the synced Payment Intent status
+  exactly and does not reinterpret or hide the stale value.
 
 ### ⚠️ Gotcha: `invoices.subscription` is ALWAYS NULL
 
