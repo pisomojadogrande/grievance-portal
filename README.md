@@ -7,15 +7,19 @@ A serverless complaint submission system with AI-generated responses, deployed o
 The Grievance Portal is a tongue-in-cheek web application where users can submit complaints for a nominal $5 processing fee. The system generates thoughtful, bureaucratic (yet ultimately noncommittal) AI responses to each complaint.
 
 **Key Features:**
+
 - Complaint submission with Stripe payment processing
+- Read-only access to Stripe data synced into Supabase Postgres
 - AI-generated responses via AWS Bedrock
 - Admin portal for reviewing complaints
 - Fully serverless architecture with scale-to-zero cost
 
 **Tech Stack:**
+
 - Frontend: React + Vite
 - Backend: Express.js on AWS Lambda
-- Database: Aurora DSQL (PostgreSQL-compatible)
+- Application database: Aurora DSQL (PostgreSQL-compatible)
+- Stripe data: Stripe-synced Supabase Postgres (separate sandbox and live databases)
 - Auth: AWS Cognito
 - AI: AWS Bedrock (Claude)
 - Payment: Stripe (test mode)
@@ -49,7 +53,12 @@ The Grievance Portal is a tongue-in-cheek web application where users can submit
 └──────┘ └────┘ └────────┘
 ```
 
+The Lambda also connects to two external Supabase Postgres databases populated
+by Stripe, one for sandbox data and one for live-mode data. These databases and
+their Stripe sync pipelines are not provisioned by CDK.
+
 **AWS Services:**
+
 - **Lambda** - Runs Express.js backend (scales to zero)
 - **API Gateway** - HTTP API endpoint
 - **S3 + CloudFront** - Static file hosting with CDN
@@ -60,7 +69,8 @@ The Grievance Portal is a tongue-in-cheek web application where users can submit
 
 ## Cost Estimate
 
-**Monthly cost at low volume:** $4-12/month
+**Monthly AWS cost at low volume:** $4-12/month, plus the cost of the two
+Supabase destinations (normally two projects) used for sandbox and live mode.
 
 This is **83-94% cheaper** than running on ECS Fargate ($71/month) because everything scales to zero when not in use.
 
@@ -72,7 +82,12 @@ Before deploying, ensure you have:
 2. **Node.js** 20.x or later
 3. **AWS CLI** configured with credentials
 4. **AWS CDK** 2.x installed globally: `npm install -g aws-cdk`
-5. **Stripe Test Account** (free at https://stripe.com)
+5. **Stripe Account** with sandbox and live-mode access (free at https://stripe.com)
+6. **Stripe Database early-access enrollment** for that Stripe account. Sign in
+   at https://docs.stripe.com/data/database; a not-found page means the account
+   is not enrolled yet.
+7. **Two Stripe-synced Postgres destinations**, normally two Supabase projects:
+   one for sandbox data and one for live-mode data
 
 ## Quick Start
 
@@ -88,20 +103,24 @@ cd infrastructure
 cdk bootstrap
 cd ..
 
-# 3. Deploy infrastructure
+# 3. Build and deploy infrastructure
+npm run build
 cd infrastructure
-cdk deploy --all
+CUSTOM_DOMAIN=none cdk deploy --all
 cd ..
 
-# 4. Configure secrets (see Configuration section below)
+# 4. Provision and backfill both Stripe-synced Supabase databases
+#    (see step 7 below)
 
-# 5. Create database tables
+# 5. Configure secrets and both Supabase URLs in SSM (see step 8 below)
+
+# 6. Create application database tables in Aurora DSQL
 npm run setup:db
 
-# 6. Deploy frontend
+# 7. Deploy frontend
 npm run deploy:frontend
 
-# 7. Create admin user (see Admin Setup section below)
+# 8. Create admin user (see step 11 below)
 ```
 
 ## Detailed Deployment Steps
@@ -174,6 +193,9 @@ This creates an S3 bucket and IAM roles that CDK uses for deployments.
 Build and deploy all stacks:
 
 ```bash
+# From the repository root, build the frontend and Lambda deployment package.
+npm run build
+
 cd infrastructure
 npm run build
 CUSTOM_DOMAIN=complaints.example.com cdk deploy --all
@@ -183,6 +205,9 @@ CUSTOM_DOMAIN=complaints.example.com cdk deploy --all
 Or deploy individually in this order:
 
 ```bash
+# From the repository root, build lambda.zip before deploying ComputeStack.
+npm run build
+
 cd infrastructure
 npm run build
 cdk deploy GrievancePortalParametersStack
@@ -248,7 +273,63 @@ aws ssm put-parameter \
   --region us-east-1
 ```
 
-### 6. Configure Secrets
+### 7. Provision Stripe-Synced Supabase Databases
+
+This branch reads Stripe-owned objects from external Postgres databases in
+addition to using Aurora DSQL for application-owned data. CDK does not create
+the databases or enable Stripe's sync.
+
+1. Confirm the Stripe account is enrolled in the Database early-access program
+   and can open https://docs.stripe.com/data/database while signed in. If it
+   cannot, ask the preview contact to enroll the account before continuing.
+2. Create two dedicated Supabase Postgres projects or databases: one for the
+   Stripe sandbox and one for live mode. Do not point both modes at the same
+   database.
+3. In each Supabase project's **Connect** dialog, copy a Postgres **Transaction
+   pooler** or **Session pooler** connection string. It must be reachable from
+   the public internet, include the database password, and use TLS, for example:
+
+   ```text
+   postgresql://USER:URL_ENCODED_PASSWORD@POOLER_HOST:PORT/postgres?sslmode=require
+   ```
+
+   This must be a Postgres connection string, not the project's HTTPS API URL.
+   URL-encode special characters in the password.
+4. In Stripe's Database preview setup, select the sandbox and attach its
+   Supabase destination. Wait for the initial backfill to finish, then switch to
+   live mode and attach the other destination. The preview setup is
+   account-gated, so follow the signed-in preview instructions or the steps from
+   the preview contact.
+5. In the Supabase SQL editor for **each** destination, run:
+
+   ```sql
+   SELECT table_name
+   FROM information_schema.tables
+   WHERE table_schema = 'public'
+     AND table_name IN (
+       'accounts',
+       'checkout_sessions',
+       'customers',
+       'invoices',
+       'payment_intents',
+       'subscriptions'
+     )
+   ORDER BY table_name;
+   ```
+
+   Both destinations must return all six rows before deployment. If a table is
+   missing, the sync pipeline or preview schema needs to be repaired or
+   backfilled; changing the application or SSM value will not create it.
+
+Stripe owns and populates these tables. Do **not** run `npm run setup:db`,
+`npm run db:push`, or application migrations against either Supabase database.
+
+For local development, export the two reader URLs as `SUPABASE_URL_SBX` and
+`SUPABASE_URL_LIVE`; `.env.example` shows the expected names. A
+`localhost`/socat tunnel URL is only valid while that tunnel is running; the
+values stored for Lambda must use the real, externally reachable pooler hosts.
+
+### 8. Configure Parameters and Secrets
 
 #### Stripe Configuration
 
@@ -280,6 +361,50 @@ aws ssm put-parameter \
   --region us-east-1
 ```
 
+#### Stripe-Synced Supabase Database URLs
+
+The CDK stacks do not create these two parameters. Store both reader connection
+strings as `SecureString` values in the **same AWS region as the Lambda**:
+
+```bash
+APP_AWS_REGION="${CDK_DEFAULT_REGION:-us-east-1}"
+
+# Read the URLs without placing the credentials in shell history.
+read -rsp "Sandbox Supabase pooler URL: " SUPABASE_URL_SBX
+echo
+read -rsp "Live Supabase pooler URL: " SUPABASE_URL_LIVE
+echo
+
+aws ssm put-parameter \
+  --name /grievance-portal/supabase/url-sbx \
+  --value "$SUPABASE_URL_SBX" \
+  --type SecureString \
+  --overwrite \
+  --region "$APP_AWS_REGION"
+
+aws ssm put-parameter \
+  --name /grievance-portal/supabase/url-live \
+  --value "$SUPABASE_URL_LIVE" \
+  --type SecureString \
+  --overwrite \
+  --region "$APP_AWS_REGION"
+
+unset SUPABASE_URL_SBX SUPABASE_URL_LIVE
+
+# Confirm that both parameters exist without printing their values.
+aws ssm describe-parameters \
+  --parameter-filters \
+    Key=Name,Option=BeginsWith,Values=/grievance-portal/supabase/ \
+  --query 'Parameters[].{Name:Name,Type:Type}' \
+  --region "$APP_AWS_REGION"
+```
+
+The existing Lambda role can already read `/grievance-portal/*`; no additional
+IAM policy or VPC configuration is needed. The process caches SSM values for the
+life of a Lambda execution environment. If the function was invoked before the
+parameters were set, redeploy `GrievancePortalComputeStack` to force a fresh
+environment.
+
 #### Session Secret
 
 Generate and store a session secret:
@@ -293,18 +418,21 @@ aws ssm put-parameter \
   --region us-east-1
 ```
 
-### 7. Create Database Tables
+### 9. Create Application Database Tables
 
 ```bash
 npm run setup:db
 ```
 
-This creates the three required tables:
+This creates the three application-owned tables in Aurora DSQL:
+
 - `admin_users` - Admin authentication
 - `complaints` - User complaints
 - `payments` - Stripe payment records
 
-### 8. Deploy Frontend
+It does not create or modify the Stripe-synced Supabase tables.
+
+### 10. Deploy Frontend
 
 ```bash
 npm run deploy:frontend
@@ -321,7 +449,7 @@ This builds the React app and uploads it to S3, then invalidates the CloudFront 
 > CUSTOM_DOMAIN=none npm run deploy:frontend
 > ```
 
-### 9. Create Admin User
+### 11. Create Admin User
 
 ```bash
 # Get your Cognito User Pool ID from stack outputs
@@ -379,15 +507,19 @@ curl $API_ENDPOINT/api/health
 
 ## Configuration
 
-### Environment Variables
+### Environment Variables and SSM Parameters
 
-The application uses SSM Parameter Store instead of environment variables. All secrets are stored at:
+Lambda loads production configuration from SSM Parameter Store. Local runs can
+provide the corresponding environment variables from `.env.example`. The
+deployment parameters include:
 
 - `/grievance-portal/stripe/secret-key`
 - `/grievance-portal/stripe/publishable-key`
 - `/grievance-portal/stripe/webhook-secret`
 - `/grievance-portal/session/secret`
 - `/grievance-portal/database/url`
+- `/grievance-portal/supabase/url-sbx` (maps to `SUPABASE_URL_SBX`)
+- `/grievance-portal/supabase/url-live` (maps to `SUPABASE_URL_LIVE`)
 
 ### Stripe Test Mode
 
@@ -468,6 +600,23 @@ Access-Control-Allow-Credentials: true
 2. Check Lambda has IAM permission: `dsql:DbConnectAdmin`
 3. Verify database URL in SSM is correct
 
+### Stripe-Synced Supabase Connection Fails
+
+**Error:** `[Stripe Sync][test|live] ... is not configured`, `Connection
+refused`, authentication errors, or `relation ... does not exist`
+
+**Solution:**
+
+1. Confirm `/grievance-portal/supabase/url-sbx` and `url-live` exist in the
+   Lambda's AWS region.
+2. Confirm each value is a Postgres pooler URL with `sslmode=require`, not a
+   Supabase HTTPS API URL or a local tunnel URL.
+3. Confirm special characters in the password are URL-encoded.
+4. Run the six-table check from step 7 against both destinations. A missing
+   relation must be fixed in the Stripe sync pipeline.
+5. If the SSM value was recently changed, redeploy the compute stack so the
+   Lambda does not keep using a cached value.
+
 ### Admin Login Fails
 
 **Error:** "Invalid credentials"
@@ -529,8 +678,11 @@ The architecture is designed for minimal cost at low volume:
 - **CloudFront** - Free tier covers most low-volume usage
 - **Cognito** - Free tier covers up to 50,000 MAUs
 - **SSM Parameter Store** - Free for standard parameters
+- **Supabase** - Two projects are required; pricing and free-tier availability
+  depend on the selected Supabase plan
 
-**Expected monthly cost:** $4-12 at low volume (< 1000 requests/month)
+**Expected monthly AWS cost:** $4-12 at low volume (< 1000 requests/month), plus
+the two Supabase destinations.
 
 ## Security Considerations
 
