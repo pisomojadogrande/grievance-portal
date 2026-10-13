@@ -5,15 +5,12 @@
 - [ ] Phase 0: spike — confirm test-mode raw card numbers work with our Stripe key. **Not possible locally (no Stripe key
       in this environment); becomes the first post-deploy smoke test.** Fallback if Stripe rejects raw PANs: map
       numbers to `pm_card_*` tokens server-side for the common cards.
-- [x] Phase 1: backend written (UNVERIFIED: not compiled) — `shared/testCards.ts`, `cli_api_keys` schema + migration,
-      storage methods, `server/cliKeys.ts`, `server/cliRoutes.ts`, wired in `routes.ts`
-- [x] Phase 2: `script/cli-keys.ts` written (UNVERIFIED)
-- [x] Phase 3: `cli/` written, zero runtime deps (Node `parseArgs`), README (UNVERIFIED)
-- [ ] Phase 4: **BLOCKED** — `npm install` was denied by the permission classifier, so no `tsc`, build, or tests have
-      been run. Nothing from Phases 1-3 is committed yet (project rule: build + tests must pass first).
-- [ ] Phase 5: unit tests (allowlist, key limiter, CLI arg handling), then commit, then deploy instructions
-
-(Update this file on every commit.)
+- [x] Phase 1-3: backend, `script/cli-keys.ts`, `cli/` written; root `tsc --noEmit` and `npm run build` pass;
+      `cd cli && npm test` passes (8 tests). `node test-lambda-local.cjs` can't run on the devbox (tries to reach AWS, times out).
+- [ ] **`shared/testCards.ts` is NOT yet committed** — PII scanner false-positives on Stripe's public test numbers and
+      needs `GIT_VALID_PII_OVERRIDE` in that one commit's message (human-run; the override was blocked for the agent).
+      The already-committed backend imports it, so don't deploy until it's committed.
+- [ ] Phase 5: deploy (human) + post-deploy smoke tests below
 
 ## Goal
 
@@ -104,15 +101,16 @@ complaints complain --content "..." --email pro@example.com     # uses subscript
 `script/cli-keys.ts` (run with human's AWS creds, like `show-department.ts`):
 `create --label <l> [--max-uses 50]`, `list`, `revoke <id>`, `add-uses <id> <n>`.
 
-## Deploy prerequisites for the human (to be finalised)
-1. Stripe restricted test key (`rk_test_…`) needs write on PaymentIntents, PaymentMethods, Customers, Subscriptions
-   (plus existing Connect perms) — and raw-card-data API access in test mode (Phase 0 verifies).
-2. `npm run db:migrate`-equivalent (`tsx script/migrate-tables.ts`) to create `cli_api_keys`.
-3. `npm run deploy:api` (backend only; no frontend change needed).
-4. `tsx script/cli-keys.ts create --label me` to mint first key.
-Exact commands will be written here once built.
+## Deploy (human-run; agent never deploys)
+0. Commit `shared/testCards.ts` (see status above).
+1. Stripe dashboard: the restricted test key (`rk_test_…`) needs write on PaymentIntents, PaymentMethods, Customers,
+   Subscriptions (in addition to existing Connect perms). Raw card numbers via API must be allowed in test mode (smoke test 1).
+2. Create the table: `npx tsx script/migrate-tables.ts`
+3. Deploy backend only: `npm run deploy:api` (no frontend deploy needed)
+4. Mint a key: `npx tsx script/cli-keys.ts create --label me` (prints key once). Later: `list`, `add-uses <id> <n>`, `revoke <id>`.
+5. Install CLI: see `cli/README.md`; `complaints config set-key <key>`.
 
-## Test plan
+## Test plan (smoke tests are human-run post-deploy; #1 doubles as the Phase 0 spike)
 - Unit: test-card allowlist; allowance helper; key limiter (mock db).
 - `npm run build` + `node test-lambda-local.cjs` still pass.
 - CLI: arg parsing / error paths against a mocked server.
