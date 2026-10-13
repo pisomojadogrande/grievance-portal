@@ -7,7 +7,8 @@ import { createChatCompletion } from "./aws/bedrock";
 import { getUncachableStripeClient, getStripePublishableKey, getLiveStripeClient, getLiveStripePublishableKey } from "./stripeClient";
 import { getParameter } from "./aws/ssm";
 import { cognitoAuthMiddleware } from "./aws/cognito";
-import { adminLoginSchema } from "@shared/schema";
+import { adminLoginSchema, REGISTERED_COMPLAINANT_MONTHLY_ALLOWANCE } from "@shared/schema";
+import { registerCliRoutes } from "./cliRoutes";
 
 // Temporary stub for authentication - will be replaced with Cognito
 const isAuthenticated = (req: any, res: any, next: any) => {
@@ -281,7 +282,7 @@ export async function registerRoutes(
       if (!sub) return res.json({ active: false });
 
       const complaintsUsed = await storage.countComplaintsInPeriod(email, sub.currentPeriodStart);
-      const complaintsAllowed = sub.tier === 'pro_complainant' ? null : 3;
+      const complaintsAllowed = sub.tier === 'pro_complainant' ? null : REGISTERED_COMPLAINANT_MONTHLY_ALLOWANCE;
 
       res.json({
         active: true,
@@ -381,7 +382,7 @@ export async function registerRoutes(
 
       if (sub.tier === 'registered_complainant') {
         const used = await storage.countComplaintsInPeriod(email, sub.currentPeriodStart);
-        if (used >= 3) return res.status(403).json({ message: 'Monthly allowance exhausted' });
+        if (used >= REGISTERED_COMPLAINANT_MONTHLY_ALLOWANCE) return res.status(403).json({ message: 'Monthly allowance exhausted' });
       }
 
       await storage.updateComplaint(Number(complaintId), { status: 'received' });
@@ -417,6 +418,9 @@ export async function registerRoutes(
       res.status(500).json({ message: err.message || 'Failed to create customer portal session' });
     }
   });
+
+  // === CLI (sandbox-only) Routes ===
+  registerCliRoutes(app, { generateBureaucraticResponse });
 
   // === Department Routes ===
 
