@@ -53,6 +53,22 @@ async function migrate() {
   `);
   console.log('✓ subscriptions table ready');
 
+  // --- cli_api_keys: create table ---
+  console.log('Creating cli_api_keys table...');
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS cli_api_keys (
+      id INTEGER PRIMARY KEY,
+      key_hash TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      max_uses INTEGER NOT NULL DEFAULT 50,
+      uses INTEGER NOT NULL DEFAULT 0,
+      revoked BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      last_used_at TIMESTAMP
+    )
+  `);
+  console.log('✓ cli_api_keys table ready');
+
   // --- complaints: add department_id column ---
   console.log('Adding department_id column to complaints...');
   await db.execute(sql`

@@ -121,6 +121,22 @@ export const subscriptions = pgTable('subscriptions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// API keys for the command-line client. Only a SHA-256 hash is stored.
+export const cliApiKeys = pgTable('cli_api_keys', {
+  id: integer('id').primaryKey(),
+  keyHash: text('key_hash').notNull().unique(),
+  label: text('label').notNull(),
+  maxUses: integer('max_uses').default(50).notNull(),
+  uses: integer('uses').default(0).notNull(),
+  revoked: boolean('revoked').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+});
+
+export type CliApiKey = typeof cliApiKeys.$inferSelect;
+
+export const REGISTERED_COMPLAINANT_MONTHLY_ALLOWANCE = 3;
+
 export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertSubscription = Omit<Subscription, 'id' | 'createdAt'>;
 

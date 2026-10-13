@@ -1,5 +1,5 @@
 import { getDb } from "./db";
-import { complaints, payments, subscriptions, departments, type Complaint, type InsertComplaint, type Payment, type InsertPayment, type Subscription, type InsertSubscription, type Department, type InsertDepartment } from "@shared/schema";
+import { complaints, payments, subscriptions, departments, cliApiKeys, type CliApiKey, type Complaint, type InsertComplaint, type Payment, type InsertPayment, type Subscription, type InsertSubscription, type Department, type InsertDepartment } from "@shared/schema";
 import { eq, desc, sql, and, gte, inArray, isNotNull } from "drizzle-orm";
 
 // Generate next ID for a table (DSQL doesn't support auto-increment)
@@ -39,6 +39,14 @@ export interface IStorage {
   updateDepartment(id: number, updates: Partial<Department>): Promise<Department>;
   getActiveDepartments(): Promise<Department[]>;
   getComplaintsByDepartmentId(departmentId: number): Promise<Complaint[]>;
+
+  // CLI API keys
+  createCliApiKey(keyHash: string, label: string, maxUses: number): Promise<CliApiKey>;
+  /** Atomically consumes one use. Returns undefined if the key is unknown, revoked, or exhausted. */
+  consumeCliApiKeyUse(keyHash: string): Promise<CliApiKey | undefined>;
+  getCliApiKeyByHash(keyHash: string): Promise<CliApiKey | undefined>;
+  listCliApiKeys(): Promise<CliApiKey[]>;
+  updateCliApiKey(id: number, updates: Partial<CliApiKey>): Promise<CliApiKey | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -172,6 +180,47 @@ export class DatabaseStorage implements IStorage {
     return await getDb().select().from(complaints)
       .where(eq(complaints.departmentId, departmentId))
       .orderBy(desc(complaints.createdAt));
+  }
+  async createCliApiKey(keyHash: string, label: string, maxUses: number): Promise<CliApiKey> {
+    const id = await getNextId('cli_api_keys');
+    const [row] = await getDb().insert(cliApiKeys).values({ id, keyHash, label, maxUses }).returning();
+    return row;
+  }
+
+  async consumeCliApiKeyUse(keyHash: string): Promise<CliApiKey | undefined> {
+    // Single conditional UPDATE so concurrent invocations can't exceed max_uses.
+    // DSQL uses optimistic concurrency; a losing writer gets a serialization error, so retry a few times.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const [row] = await getDb().update(cliApiKeys)
+          .set({ uses: sql`${cliApiKeys.uses} + 1`, lastUsedAt: new Date() })
+          .where(and(
+            eq(cliApiKeys.keyHash, keyHash),
+            eq(cliApiKeys.revoked, false),
+            sql`${cliApiKeys.uses} < ${cliApiKeys.maxUses}`,
+          ))
+          .returning();
+        return row;
+      } catch (err: any) {
+        if (attempt === 4) throw err;
+        await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+      }
+    }
+    return undefined;
+  }
+
+  async getCliApiKeyByHash(keyHash: string): Promise<CliApiKey | undefined> {
+    const [row] = await getDb().select().from(cliApiKeys).where(eq(cliApiKeys.keyHash, keyHash));
+    return row;
+  }
+
+  async listCliApiKeys(): Promise<CliApiKey[]> {
+    return getDb().select().from(cliApiKeys).orderBy(cliApiKeys.id);
+  }
+
+  async updateCliApiKey(id: number, updates: Partial<CliApiKey>): Promise<CliApiKey | undefined> {
+    const [row] = await getDb().update(cliApiKeys).set(updates).where(eq(cliApiKeys.id, id)).returning();
+    return row;
   }
 }
 
