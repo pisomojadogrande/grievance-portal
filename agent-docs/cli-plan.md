@@ -2,11 +2,16 @@
 
 ## Status
 
-- [ ] Phase 0: spike — confirm test-mode raw card numbers work with our Stripe key
-- [ ] Phase 1: backend (API keys, test-card allowlist, `/api/cli/*` endpoints)
-- [ ] Phase 2: key admin script (`script/cli-keys.ts`)
-- [ ] Phase 3: CLI package (`cli/`)
-- [ ] Phase 4: docs + local tests + deploy instructions handed to human
+- [ ] Phase 0: spike — confirm test-mode raw card numbers work with our Stripe key. **Not possible locally (no Stripe key
+      in this environment); becomes the first post-deploy smoke test.** Fallback if Stripe rejects raw PANs: map
+      numbers to `pm_card_*` tokens server-side for the common cards.
+- [x] Phase 1: backend written (UNVERIFIED: not compiled) — `shared/testCards.ts`, `cli_api_keys` schema + migration,
+      storage methods, `server/cliKeys.ts`, `server/cliRoutes.ts`, wired in `routes.ts`
+- [x] Phase 2: `script/cli-keys.ts` written (UNVERIFIED)
+- [x] Phase 3: `cli/` written, zero runtime deps (Node `parseArgs`), README (UNVERIFIED)
+- [ ] Phase 4: **BLOCKED** — `npm install` was denied by the permission classifier, so no `tsc`, build, or tests have
+      been run. Nothing from Phases 1-3 is committed yet (project rule: build + tests must pass first).
+- [ ] Phase 5: unit tests (allowlist, key limiter, CLI arg handling), then commit, then deploy instructions
 
 (Update this file on every commit.)
 
@@ -115,4 +120,7 @@ Exact commands will be written here once built.
   after 3 uses requires card, key exhaustion at 50.
 
 ## Log
-- (none yet)
+- 2026-10-13: Wrote phases 1-3. Deviation from plan: `consumeUse` happens after request validation (not in the auth
+  middleware) so typos don't burn invocations. CLI uses Node's built-in `parseArgs` instead of commander (no deps to
+  install). `cli/src/testCards.ts` is copied from `shared/testCards.ts` by `npm run sync-cards` (gitignored).
+- Card list was transcribed from docs.stripe.com/testing via a summarizer; worth a human skim of `shared/testCards.ts`.
