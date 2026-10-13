@@ -1,0 +1,4 @@
+node_modules
+dist
+# generated from ../shared/testCards.ts by `npm run sync-cards`
+src/testCards.ts

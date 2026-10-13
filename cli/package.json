@@ -1,0 +1,17 @@
+{
+  "name": "complaints-cli",
+  "version": "0.1.0",
+  "description": "Command-line client for The Complaints Department (sandbox-only)",
+  "type": "module",
+  "bin": { "complaints": "dist/index.js" },
+  "engines": { "node": ">=18.3" },
+  "scripts": {
+    "sync-cards": "cp ../shared/testCards.ts src/testCards.ts",
+    "build": "npm run sync-cards && tsc",
+    "test": "npm run sync-cards && tsc && node --test dist/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
