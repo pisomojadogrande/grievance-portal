@@ -7,9 +7,8 @@
       numbers to `pm_card_*` tokens server-side for the common cards.
 - [x] Phase 1-3: backend, `script/cli-keys.ts`, `cli/` written; root `tsc --noEmit` and `npm run build` pass;
       `cd cli && npm test` passes (8 tests). `node test-lambda-local.cjs` can't run on the devbox (tries to reach AWS, times out).
-- [ ] **`shared/testCards.ts` is NOT yet committed** — PII scanner false-positives on Stripe's public test numbers and
-      needs `GIT_VALID_PII_OVERRIDE` in that one commit's message (human-run; the override was blocked for the agent).
-      The already-committed backend imports it, so don't deploy until it's committed.
+- [x] `shared/testCards.ts` committed (with PII-scanner override, human-authorized, that file only).
+- Work lives on branch `cli-support`. **See `agent-docs/next-steps.md` for handoff + remaining steps.**
 - [ ] Phase 5: deploy (human) + post-deploy smoke tests below
 
 ## Goal
@@ -102,9 +101,9 @@ complaints complain --content "..." --email pro@example.com     # uses subscript
 `create --label <l> [--max-uses 50]`, `list`, `revoke <id>`, `add-uses <id> <n>`.
 
 ## Deploy (human-run; agent never deploys)
-0. Commit `shared/testCards.ts` (see status above).
-1. Stripe dashboard: the restricted test key (`rk_test_…`) needs write on PaymentIntents, PaymentMethods, Customers,
-   Subscriptions (in addition to existing Connect perms). Raw card numbers via API must be allowed in test mode (smoke test 1).
+0. (done) `shared/testCards.ts` committed.
+1. Stripe dashboard: restricted-key permissions — full list in `next-steps.md` (PaymentIntents, PaymentMethods,
+   Customers, Subscriptions write; Invoices/Prices/Products as noted; plus existing Checkout/Connect/portal perms). Raw card numbers via API must be allowed in test mode (smoke test 1).
 2. Create the table: `npx tsx script/migrate-tables.ts`
 3. Deploy backend only: `npm run deploy:api` (no frontend deploy needed)
 4. Mint a key: `npx tsx script/cli-keys.ts create --label me` (prints key once). Later: `list`, `add-uses <id> <n>`, `revoke <id>`.
